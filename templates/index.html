@@ -1,0 +1,100 @@
+<html>
+	<head>
+		<title>FreewayData</title>
+	</head>
+	<body>
+		<h1>FreewayData</h1>
+		<div>
+			<div>
+				Query <a href="/import">Import</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8002">Console</a> <a href="/utilities">Utilities</a>
+			</div>
+			<hr/>
+			<h2>Query the Datastore</h2>
+			<div>
+				<form action="/freewaydata?{{ uri }}" method="get">
+					<div>
+						Start date:<input value="{{ startdate }}" name="startdate"/><br/>
+						End date:<input value="{{ enddate }}" name="enddate"/><br/>
+					</div>
+					<div>
+						<label for="starttime">Start time:</label>
+						<select id="starttime" name="starttime">
+							<option value="00" selected>12 AM</option>
+							<option value="01">1 AM</option>
+							<option value="02">2 AM</option>
+							<option value="03">3 AM</option>
+							<option value="04">4 AM</option>
+							<option value="05">5 AM</option>
+							<option value="06">6 AM</option>
+							<option value="07">7 AM</option>
+							<option value="08">8 AM</option>
+							<option value="09">9 AM</option>
+							<option value="10">10 AM</option>
+							<option value="11">11 AM</option>
+							<option value="12">12 PM</option>
+							<option value="13">1 PM</option>
+							<option value="14">2 PM</option>
+							<option value="15">3 PM</option>
+							<option value="16">4 PM</option>
+							<option value="17">5 PM</option>
+							<option value="18">6 PM</option>
+							<option value="19">7 PM</option>
+							<option value="20">8 PM</option>
+							<option value="21">9 PM</option>
+							<option value="22">10 PM</option>
+							<option value="23">11 PM</option>
+						</select>
+						<label for="endtime">End time:</label>
+						<select id="endtime" name="endtime">
+							<option value="00" selected>12 AM</option>
+							<option value="01">1 AM</option>
+							<option value="02">2 AM</option>
+							<option value="03">3 AM</option>
+							<option value="04">4 AM</option>
+							<option value="05">5 AM</option>
+							<option value="06">6 AM</option>
+							<option value="07">7 AM</option>
+							<option value="08">8 AM</option>
+							<option value="09">9 AM</option>
+							<option value="10">10 AM</option>
+							<option value="11">11 AM</option>
+							<option value="12">12 PM</option>
+							<option value="13">1 PM</option>
+							<option value="14">2 PM</option>
+							<option value="15">3 PM</option>
+							<option value="16">4 PM</option>
+							<option value="17">5 PM</option>
+							<option value="18">6 PM</option>
+							<option value="19">7 PM</option>
+							<option value="20">8 PM</option>
+							<option value="21">9 PM</option>
+							<option value="22">10 PM</option>
+							<option value="23">11 PM</option>
+						</select>
+					</div>
+					<div>
+						<label for="highway">Highway:</label>
+						<select id="highway" name="highway" selected="{{ highway }}">
+							<option value="I-5" selected>I-5</option>
+							<option value="I-205">I-205</option>
+							<option value="I-405">I-405</option>
+							<option value="I-84">I-84</option>
+							<option value="OR 217">OR 217</option>
+							<option value="US 26">US 26</option>
+						</select>
+						<label for="direction">Direction:</label>
+						<select id="direction" name="direction" selected="{{ direction }}">
+							<option value="N" selected>North</option>
+							<option value="S">South</option>
+							<option value="E">East</option>
+							<option value="W">West</option>
+						</select>
+					</div>
+					<div>
+						<input type="submit" value="Submit"/>
+					</div>
+				</form>
+			</div>
+		</div>
+	</body>
+</html>

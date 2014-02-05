@@ -1,0 +1,61 @@
+<html>
+	<head>
+		<title>FreewayData: Import</title>
+		<style type="text/css">@import url(/static/css/plupload.queue.css);</style>
+		<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+		<script type="text/javascript">
+			google.load("jquery", "1.4");
+		</script>
+		<script type="text/javascript" src="/static/plupload/plupload.js"></script>
+		<script type="text/javascript" src="/static/plupload/plupload.gears.js"></script>
+		<script type="text/javascript" src="/static/plupload/plupload.full.js"></script>
+		<script type="text/javascript" src="/static/plupload/jquery.plupload.queue.js"></script>
+		<script type="text/javascript">
+			$(function() {
+			  uploader = $("#uploader").pluploadQueue({
+													  runtimes: 'html4,html5,gears,flash',
+													  use_query_string: false,
+													  multipart: true,
+													  flash_swf_url: '/static/plupload/plupload.flash.swf',
+													  filters: [{title:'CSV files', extensions:'csv'}, {title:'Zip files', extensions:'zip'}],
+													  multiple_selection: true
+													  }).pluploadQueue();
+			  uploader.bind('UploadFile', function(up, file) {
+							$.ajax({
+								   url: '/generate_upload_url',
+								   async: false,
+								   success: function(data) {
+								   up.settings.url = data;
+								   },
+								   });
+							});
+			  });
+			</script>
+	</head>
+	<body>
+		<h1>FreewayData</h1>
+		<div>
+			<a href="/">Query</a> Import <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8002">Console</a> <a href="/utilities">Utilities</a>
+			<hr/>
+			<h2>Upload files to the Datastore</h2>
+			<form>
+				<div id="uploader">
+				</div>
+			</form>
+			<hr>
+			<div>
+				<form action="/utilities" method="get">
+					<input type="hidden" name="combine" id="combine" value="combine"/>
+					<input type="submit" id="combine" value="Combine"/>
+				</form>
+			</div>
+			<hr/>
+			<div>
+				<form action="/utilities" method="get">
+					<input type="hidden" name="delete" id="delete" value="delete"/>
+					<input type="submit" id="delete" value="Drop loop data"/>
+				</form>
+			</div>
+		</div>
+	</body>
+</html>

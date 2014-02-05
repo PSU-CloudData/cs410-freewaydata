@@ -1,0 +1,27 @@
+<html>
+	<head>
+		<title>FreewayData: Query</title>
+	</head>
+	<body>
+		<h1>FreewayData</h1>
+		<div>
+			<a href="/">Query</a> <a href="/import">Import</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8002">Console</a> Utilities
+			<hr/>
+			<h2>Utilities</h2>
+			<hr>
+			<div>
+				<form action="/utilities" method="get">
+					<input type="hidden" name="combine" id="combine" value="combine"/>
+					<input type="submit" id="combine" value="Combine"/>
+				</form>
+			</div>
+			<hr/>
+			<div>
+				<form action="/utilities" method="get">
+					<input type="hidden" name="delete" id="delete" value="delete"/>
+					<input type="submit" id="delete" value="Drop loop data"/>
+				</form>
+			</div>
+		</div>
+	</body>
+</html>

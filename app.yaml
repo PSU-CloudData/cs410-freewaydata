@@ -1,0 +1,52 @@
+application: cs410-freewaydata
+version: 1
+runtime: python27
+api_version: 1
+threadsafe: no
+
+handlers:
+
+- url: /remote_api
+  script: $PYTHON_LIB/google/appengine/ext/remote_api/handler.py
+  login: admin
+
+- url: /_ah/queue/deferred
+  script: $PYTHON_LIB/google/appengine/ext/deferred/deferred.py
+  login: admin
+
+- url: /static
+  static_dir: static
+
+- url: /freewaydata
+  script: freewaydata.app
+
+- url: /import(.*)
+  script: import.app
+
+- url: /generate_upload_url
+  script: import.app
+  
+- url: /upload
+  script: import.app
+
+- url: /upload/(.*)
+  script: import.app
+
+- url: /file/(.*)
+  script: import.app
+
+- url: /utilities
+  script: utilities.app
+
+- url: /.*
+  script: main.app
+
+libraries:
+- name: webapp2
+  version: "2.5.2"
+- name: jinja2
+  version: latest
+
+builtins:
+- remote_api: on
+- appstats: on
