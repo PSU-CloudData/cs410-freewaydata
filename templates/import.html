@@ -5,7 +5,7 @@
 		<script type="text/javascript" src="http://www.google.com/jsapi"></script>
 		<script type="text/javascript">
 			google.load("jquery", "1.4");
-		</script>
+			</script>
 		<script type="text/javascript" src="/static/plupload/plupload.js"></script>
 		<script type="text/javascript" src="/static/plupload/plupload.gears.js"></script>
 		<script type="text/javascript" src="/static/plupload/plupload.full.js"></script>
@@ -13,12 +13,12 @@
 		<script type="text/javascript">
 			$(function() {
 			  uploader = $("#uploader").pluploadQueue({
-													  runtimes: 'html4,html5,gears,flash',
+													  runtimes: 'flash,html4,gears,html5',
 													  use_query_string: false,
 													  multipart: true,
 													  flash_swf_url: '/static/plupload/plupload.flash.swf',
 													  filters: [{title:'CSV files', extensions:'csv'}, {title:'Zip files', extensions:'zip'}],
-													  multiple_selection: true
+													  chunk_size: '1mb'
 													  }).pluploadQueue();
 			  uploader.bind('UploadFile', function(up, file) {
 							$.ajax({
@@ -31,6 +31,7 @@
 							});
 			  });
 			</script>
+		<script src="static/js/custom.js" type="text/javascript"></script>
 	</head>
 	<body>
 		<h1>FreewayData</h1>
@@ -43,6 +44,37 @@
 				</div>
 			</form>
 			<hr>
+			<div>
+				{% if length %}
+				<table border=1>
+					<tr>
+						<td></td>
+						<td>name</td>
+						<td>uploaded on</td>
+						<td>content type</td>
+						<td>md5</td>
+					</tr>
+					{% for item in items %}
+					<tr>
+						<td><input type="radio" name="file_radio" onclick="updateForm('{{ item.blobkey }}',
+							'{{ item.blobkey }}', '{{ item.filename }}');"></td>
+						<td><a href="/file/{{ item.blobkey }}/download">{{ item.filename }}</a></td>
+						<td>{{ item.creation }}</td>
+						<td>{{ item.content_type }}</td>
+						<td>{{ item.md5_hash }}</td>
+					</tr>
+					{% endfor %}
+				</table>
+				{% else %}
+				<div>No files uploaded yet!</div>
+				{% endif %}
+				<form action="/import" method="post">
+					<input type="hidden" name="filekey" id="filekey" value=""/>
+					<input type="hidden" name="blobkey" id="blobkey" value=""/>
+					<input type="submit" id="import" value="Import"/>
+				</form>
+			</div>
+			<hr/>
 			<div>
 				<form action="/utilities" method="get">
 					<input type="hidden" name="combine" id="combine" value="combine"/>

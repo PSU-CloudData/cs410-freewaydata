@@ -10,20 +10,21 @@ import jinja2
 from FreewayData import Highway, Station, Detector, LoopData
 
 from google.appengine.ext import blobstore
-from google.appengine.ext import db
+from google.appengine.ext.blobstore import BlobInfo
+from google.appengine.ext import db, ndb
 from google.appengine.ext import webapp
 
 from google.appengine.ext.webapp import blobstore_handlers
 from google.appengine.ext.webapp import template
 
-"""
-Blob file model for datastore
-"""
-class FileInfo(db.Model):
-	blob = blobstore.BlobReferenceProperty(required=True)
-	uploaded_at = db.DateTimeProperty(required=True, auto_now_add=True)
-
-
+""" FileMetadata db class definition """
+class FileMetadata(db.Model):
+	content_type = db.StringProperty()
+	creation = db.DateTimeProperty()
+	filename = db.StringProperty()
+	size = db.IntegerProperty()
+	md5_hash = db.StringProperty()
+	blobkey = db.StringProperty()
 
 """
 Upload request handlers
@@ -36,58 +37,21 @@ class BaseHandler(webapp.RequestHandler):
 
 class FileUploadFormHandler(BaseHandler):
 	def get(self):
-		self.render_template("import.html", {})
+		q = FileMetadata.all()
+		results = q.fetch(10)
+				
+		items = [result for result in results]
 
-
-class FileUploadHandler(blobstore_handlers.BlobstoreUploadHandler):
+		length = len(items)
+			
+		self.render_template("import.html",
+								 {"length": length,
+								 "items": items})
+				
+								 
 	def post(self):
-		blob_info = self.get_uploads()[0]
-		file_info = FileInfo(blob=blob_info.key())
-		db.put(file_info)
-		self.redirect("/file/%d/success" % (file_info.key().id(),))
-
-
-class AjaxSuccessHandler(BaseHandler):
-	def get(self, file_id):
-		self.response.headers['Content-Type'] = 'text/plain'
-		self.response.out.write('%s/file/%s' % (self.request.host_url, file_id))
-
-
-class FileInfoHandler(BaseHandler):
-	def get(self, file_id):
-		file_info = FileInfo.get_by_id(long(file_id))
-		if not file_info:
-			self.error(404)
-			return
-		self.render_template("file_info.html", {
-			'file_info': file_info
-		})
-
-
-class FileDownloadHandler(blobstore_handlers.BlobstoreDownloadHandler):
-	def get(self, file_id):
-		file_info = FileInfo.get_by_id(long(file_id))
-		if not file_info or not file_info.blob:
-			self.error(404)
-			return
-		self.send_blob(file_info.blob, save_as=False)
-
-
-class GenerateUploadUrlHandler(webapp2.RequestHandler):
-	def get(self):
-		self.response.headers['Content-Type'] = 'text/plain'
-		upload_url = blobstore.create_upload_url('/upload')
-		logging.info("Upload URL:%s", upload_url)
-		self.response.out.write(upload_url)
-
-
-"""
-Datastore import handler
-"""
-class DatastoreImportHandler(blobstore_handlers.BlobstoreDownloadHandler):
-	def get(self, resource):
 		# get the resource key
-		resource = str(urllib.unquote(resource))
+		resource = self.request.get('blobkey')
 		# get BlobInfo from the blobstore using resource key
 		blob_info = blobstore.BlobInfo.get(resource)
 		# get the filename of the blob
@@ -118,7 +82,8 @@ class DatastoreImportHandler(blobstore_handlers.BlobstoreDownloadHandler):
 						downstream=int(line['downstream']),
 						stationclass=int(line['stationclass']),
 						numberlanes=int(line['numberlanes']),
-						latlon=ndb.GeoPt(line['latlon']))
+						latlon=ndb.GeoPt(line['latlon']),
+						highway=ndb.Key(Highway, line['highwayid']))
 				s.put()
 				self.response.out.write(s)
 		elif filename == 'freeway_detectors.csv':
@@ -133,7 +98,7 @@ class DatastoreImportHandler(blobstore_handlers.BlobstoreDownloadHandler):
 						stationid=int(line['stationid']))
 				d.put()
 				self.response.out.write(d)
-		elif filename == 'fw_ld_92211.csv':
+		elif filename == 'freeway_loopdata.csv':
 			for line in csv_reader:
 				if 'detectorid' in line:
 					l = LoopData(detectorid=int(line['detectorid']),
@@ -150,6 +115,57 @@ class DatastoreImportHandler(blobstore_handlers.BlobstoreDownloadHandler):
 			self.response.out.write("Finished data import")
 		else:
 			self.response.out.write("Unrecognized data file: "+blob_info.filename)
+
+
+
+
+class FileUploadHandler(blobstore_handlers.BlobstoreUploadHandler):
+	def post(self):
+		blob_info = self.get_uploads()[0]
+				
+		file_metadata = FileMetadata(content_type = blob_info.content_type,
+								creation = blob_info.creation,
+								filename = blob_info.filename,
+								size = blob_info.size,
+								md5_hash = blob_info.md5_hash,
+								blobkey = str(blob_info.key()))
+		
+		db.put(file_metadata)
+		self.redirect("/file/%s/success" % (file_metadata.blobkey,))
+
+
+class AjaxSuccessHandler(BaseHandler):
+	def get(self, file_id):
+		self.response.headers['Content-Type'] = 'text/plain'
+		self.response.out.write('%s/file/%s' % (self.request.host_url, file_id))
+
+
+class FileInfoHandler(BaseHandler):
+	def get(self, file_id):
+		file_info = FileMetadata.get_by_id(long(file_id))
+		if not file_info:
+			self.error(404)
+			return
+		self.render_template("file_info.html", {
+			'file_info': file_info
+		})
+
+
+class FileDownloadHandler(blobstore_handlers.BlobstoreDownloadHandler):
+	def get(self, file_id):
+		file_info = str(urllib.unquote(file_id)).strip()
+		if not file_info:
+			self.error(404)
+			return
+		self.send_blob(BlobInfo.get(file_id), save_as=False)
+
+
+class GenerateUploadUrlHandler(webapp2.RequestHandler):
+	def get(self):
+		self.response.headers['Content-Type'] = 'text/plain'
+		upload_url = blobstore.create_upload_url('/upload')
+		logging.info("Upload URL:%s", upload_url)
+		self.response.out.write(upload_url)
 
 
 app = webapp2.WSGIApplication([
