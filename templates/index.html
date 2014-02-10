@@ -1,22 +1,29 @@
 <html>
 	<head>
 		<title>FreewayData</title>
+		<script src="/mapreduce/jquery.js" type="text/javascript"></script>
+		<script src="/static/js/custom.js" type="text/javascript"></script>
+		<link href="/static/css/style.css" rel="stylesheet" type="text/css">
 	</head>
 	<body>
-		<h1>FreewayData</h1>
 		<div>
+		<h1>FreewayData</h1>
+			<!-- navigation menu -->
 			<div>
-				Query <a href="/import">Import</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8002">Console</a> <a href="/utilities">Utilities</a>
+				<strong>Query</strong> <a href="/import">Import</a> <a href="/utilities">Utilities</a> <a href="/filesplit">Filesplit</a> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
 			</div>
 			<hr/>
 			<h2>Query the Datastore</h2>
 			<div>
-				<form action="/freewaydata?{{ uri }}" method="get">
+				<form action="/" method="get">
 					<div>
+						<!-- startdate select input -->
 						Start date:<input value="{{ startdate }}" name="startdate"/><br/>
+						<!-- enddate select input -->
 						End date:<input value="{{ enddate }}" name="enddate"/><br/>
 					</div>
 					<div>
+						<!-- starttime select input -->
 						<label for="starttime">Start time:</label>
 						<select id="starttime" name="starttime">
 							<option value="00" selected>12 AM</option>
@@ -44,6 +51,7 @@
 							<option value="22">10 PM</option>
 							<option value="23">11 PM</option>
 						</select>
+						<!-- endtime select input -->
 						<label for="endtime">End time:</label>
 						<select id="endtime" name="endtime">
 							<option value="00" selected>12 AM</option>
@@ -73,27 +81,115 @@
 						</select>
 					</div>
 					<div>
+						<!-- highway select input -->
 						<label for="highway">Highway:</label>
-						<select id="highway" name="highway" selected="{{ highway }}">
+						<select id="highway" name="highway">
+							{% if highway %}
+							<option value="I-5" {% if highway == 'I-5' %} selected {% endif %}>I-5</option>
+							<option value="I-205" {% if highway == "I-205" %} selected {% endif %}>I-205</option>
+							<option value="I-405" {% if highway == "I-405" %} selected {% endif %}>I-405</option>
+							<option value="I-84" {% if highway == "I-84" %} selected {% endif %}>I-84</option>
+							<option value="OR 217" {% if highway == "OR 217" %} selected {% endif %}>OR 217</option>
+							<option value="US 26" {% if highway == "US 26" %} selected {% endif %}>US 26</option>
+							{% else %}
 							<option value="I-5" selected>I-5</option>
 							<option value="I-205">I-205</option>
 							<option value="I-405">I-405</option>
 							<option value="I-84">I-84</option>
 							<option value="OR 217">OR 217</option>
 							<option value="US 26">US 26</option>
+							{% endif %}
 						</select>
+						<!-- direction select input -->
 						<label for="direction">Direction:</label>
 						<select id="direction" name="direction" selected="{{ direction }}">
+							{% if direction %}
+							<option value="N" {% if direction == "N" %}selected{% endif %}>North</option>
+							<option value="S" {% if direction == "S" %}selected{% endif %}>South</option>
+							<option value="E" {% if direction == "E" %}selected{% endif %}>East</option>
+							<option value="W" {% if direction == "W" %}selected{% endif %}>West</option>
+							{% else %}
 							<option value="N" selected>North</option>
 							<option value="S">South</option>
 							<option value="E">East</option>
 							<option value="W">West</option>
+							{% endif %}
 						</select>
 					</div>
 					<div>
 						<input type="submit" value="Submit"/>
 					</div>
 				</form>
+			</div>
+			<!-- Highways Datastore entities table -->
+			<div>
+				{% if hwys_length %}
+				<hr/>
+				<h3>Highways</h3>
+				<table border=1>
+					<tr>
+						<th>highwayid</td>
+						<th>highwayname</th>
+						<th>direction</th>
+						<th>shortdirection</th>
+						<th>stations</th>
+					</tr>
+					{% for highway in highways %}
+					<tr>
+						<td>{{ highway.highwayid }}</td>
+						<td>{{ highway.highwayname }} </td>
+						<td>{{ highway.direction }}</td>
+						<td>{{ highway.shortdirection }}</td>
+						<td>{{ highway.stations }}</td>
+					{% endfor %}
+					</tr>
+				</table>
+				{% else %}
+				No highways found - upload highways.csv on <a href="/import">import page</a>.
+				{% endif %}
+			</div>
+			<!-- Stations Datastore entities table -->
+			<div>
+				{% if stns_length %}
+				<hr/>
+				<h3>Stations</h3>
+				<table border=1>
+					<tr>
+						<th>stationid</td>
+						<th>highwayid</th>
+						<th>milepost</th>
+						<th>locationtext</th>
+						<th>upstream</th>
+						<th>downstream</th>
+						<th>stationclass</th>
+						<th>numberlanes</th>
+						<th>latlon</th>
+						<th>detectors</th>
+					</tr>
+					{% for station in stations %}
+					<tr>
+						<td>{{ station.stationid }}</td>
+						<td>{{ station.highwayid }} </td>
+						<td>{{ station.milepost }}</td>
+						<td>{{ station.locationtext }}</td>
+						<td>{{ station.upstream }}</td>
+						<td>{{ station.downstream }}</td>
+						<td>{{ station.stationclass }}</td>
+						<td>{{ station.numberlanes }}</td>
+						<td>{{ station.latlon }}</td>
+						{% if station.detectors %}
+						<td>
+						{% for detector in station.detectors %}
+						{{ detector.detectorid }}
+						{% endfor %}
+						</td>
+						{% endif %}
+					{% endfor %}
+					</tr>
+				</table>
+				{% else %}
+				No stations found - upload freeway_stations.csv on <a href="/import">import page</a>.
+				{% endif %}
 			</div>
 		</div>
 	</body>

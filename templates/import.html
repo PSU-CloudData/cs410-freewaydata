@@ -1,84 +1,73 @@
 <html>
 	<head>
 		<title>FreewayData: Import</title>
-		<style type="text/css">@import url(/static/css/plupload.queue.css);</style>
-		<script type="text/javascript" src="http://www.google.com/jsapi"></script>
-		<script type="text/javascript">
-			google.load("jquery", "1.4");
-			</script>
-		<script type="text/javascript" src="/static/plupload/plupload.js"></script>
-		<script type="text/javascript" src="/static/plupload/plupload.gears.js"></script>
-		<script type="text/javascript" src="/static/plupload/plupload.full.js"></script>
-		<script type="text/javascript" src="/static/plupload/jquery.plupload.queue.js"></script>
-		<script type="text/javascript">
-			$(function() {
-			  uploader = $("#uploader").pluploadQueue({
-													  runtimes: 'flash,html4,gears,html5',
-													  use_query_string: false,
-													  multipart: true,
-													  flash_swf_url: '/static/plupload/plupload.flash.swf',
-													  filters: [{title:'CSV files', extensions:'csv'}, {title:'Zip files', extensions:'zip'}],
-													  chunk_size: '1mb'
-													  }).pluploadQueue();
-			  uploader.bind('UploadFile', function(up, file) {
-							$.ajax({
-								   url: '/generate_upload_url',
-								   async: false,
-								   success: function(data) {
-								   up.settings.url = data;
-								   },
-								   });
-							});
-			  });
-			</script>
-		<script src="static/js/custom.js" type="text/javascript"></script>
+		<script src="/mapreduce/jquery.js" type="text/javascript"></script>
+		<script src="/static/js/custom.js" type="text/javascript"></script>
+		<link href="/static/css/style.css" rel="stylesheet" type="text/css">
 	</head>
 	<body>
-		<h1>FreewayData</h1>
 		<div>
-			<a href="/">Query</a> Import <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8002">Console</a> <a href="/utilities">Utilities</a>
+			<h1>FreewayData</h1>
+			<!-- navigation menu -->
+			<div>
+				<a href="/">Query</a> <strong>Import</strong> <a href="/utilities">Utilities</a> <a href="/filesplit">Filesplit</a> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
+			</div>
 			<hr/>
-			<h2>Upload files to the Datastore</h2>
-			<form>
-				<div id="uploader">
-				</div>
+			<!-- File upload form -->
+			<form action="{{ upload_url }}" method="post"
+				enctype="multipart/form-data">
+				<h3>Upload files to the Blobstore</h3>
+				<label for="file">Filename:</label>
+				<input type="file" name="file" id="file"/>
+				<br>
+				<input type="submit" name="submit" value="Upload"/>
 			</form>
 			<hr>
+			<!-- Display uploaded files, and allow for import into Datastore -->
 			<div>
+				<h3>Import files from Blobstore to Datastore</h3>
 				{% if length %}
 				<table border=1>
 					<tr>
-						<td></td>
-						<td>name</td>
-						<td>uploaded on</td>
-						<td>content type</td>
-						<td>md5</td>
+						<th></th>
+						<th>name</th>
+						<th>uploaded on</th>
+						<th>content type</th>
+						<th>md5</th>
+						<th>blobkey</th>
 					</tr>
 					{% for item in items %}
 					<tr>
-						<td><input type="radio" name="file_radio" onclick="updateForm('{{ item.blobkey }}',
+						<td><input type="radio" name="file_radio" onclick="updateImportForm('{{ item.blobkey }}',
 							'{{ item.blobkey }}', '{{ item.filename }}');"></td>
 						<td><a href="/file/{{ item.blobkey }}/download">{{ item.filename }}</a></td>
 						<td>{{ item.creation }}</td>
 						<td>{{ item.content_type }}</td>
 						<td>{{ item.md5_hash }}</td>
+						<td>{{ item.blobkey }}</td>
 					</tr>
 					{% endfor %}
 				</table>
+				<form action="/import" method="post">
+					Input File: <label id="jobName">none selected</label>
+					<input type="hidden" name="filekey" id="filekey" value=""/>
+					<input type="hidden" name="blobkey" id="blobkey" value=""/>
+					<br/>
+					<input type="submit" id="import" value="Import" disabled="true"/>
+				</form>
 				{% else %}
 				<div>No files uploaded yet!</div>
 				{% endif %}
-				<form action="/import" method="post">
-					<input type="hidden" name="filekey" id="filekey" value=""/>
-					<input type="hidden" name="blobkey" id="blobkey" value=""/>
-					<input type="submit" id="import" value="Import"/>
-				</form>
 			</div>
 			<hr/>
 			<div>
 				<form action="/utilities" method="get">
-					<input type="hidden" name="combine" id="combine" value="combine"/>
-					<input type="submit" id="combine" value="Combine"/>
+					<input type="hidden" name="combine" id="combine" value="detectors"/>
+					<input type="submit" id="combine" value="Combine detectors"/>
+				</form>
+				<form action="/utilities" method="get">
+					<input type="hidden" name="combine" id="combine" value="stations"/>
+					<input type="submit" id="combine" value="Combine stations"/>
 				</form>
 			</div>
 			<hr/>

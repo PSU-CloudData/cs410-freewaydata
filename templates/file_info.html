@@ -1,16 +1,20 @@
 <html>
-<head>
-  <title>FreewayData File information</title>
-</head>
-<body>
-  <h1>File information</h1>
-  <table>
-    <tr><th>Filename</th><td>{{file_info.blob.filename}}</td></tr>
-    <tr><th>Size</th><td>{{file_info.blob.size}} bytes</td></tr>
-    <tr><th>Uploaded</th><td>{{file_info.uploaded_at}}</td></tr>
-    <tr><th>Content Type</th><td>{{file_info.blob.content_type}}</td></tr>
-  </table>
-  
-  <p><a href="/file/{{file_info.key.id}}/download">Download this file</a></p>
-</body>
+	<head>
+		<title>FreewayData File information</title>
+		<link href="/static/css/style.css" rel="stylesheet" type="text/css">
+	</head>
+	<body>
+		<div>
+			<h1>File information</h1>
+			<table>
+				<tr><th>Filename</th><td>{{file_info.filename}}</td></tr>
+				<tr><th>Size</th><td>{{file_info.size}} bytes</td></tr>
+				<tr><th>Uploaded</th><td>{{file_info.creation}}</td></tr>
+				<tr><th>Content Type</th><td>{{file_info.content_type}}</td>
+				<tr><th>MD5 hash</th><td>{{file_info.md5_hash}}</td>
+				<tr><th>Blob key</th><td>{{file_info.blobkey}}</td></tr>
+			</table>
+			<p><a href="/file/{{file_info.blobkey}}/download">Download this file</a></p>
+		</div>
+	</body>
 </html>

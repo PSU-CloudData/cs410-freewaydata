@@ -1,0 +1,14 @@
+/*
+   FreewayData
+------------------------------------------------------------------- */
+
+body {
+	background-color:#F5F5F5;
+}
+
+body div:first-child {
+	width:95%;
+	background-color:#FFFFFF;
+	margin:10px;
+	padding:10px;
+}

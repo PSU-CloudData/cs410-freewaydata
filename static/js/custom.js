@@ -22,14 +22,19 @@
  * @param {string} filename The name that the user has chosen to give this input
  *     file upon uploading it.
  */
-function updateForm(filekey, blobkey, filename) {
+function updateImportForm(filekey, blobkey, filename) {
   $('#jobName').text(filename);
   $('#filekey').val(filekey);
   $('#blobkey').val(blobkey);
-//
-//  $('#word_count').removeAttr('disabled');
-//  $('#index').removeAttr('disabled');
-//  $('#phrases').removeAttr('disabled');
-//  $('#speedsum').removeAttr('disabled');
+
+  $('#import').removeAttr('disabled');
+}
+
+function updateFilesplitForm(filekey, blobkey, filename) {
+  $('#jobName').text(filename);
+  $('#filekey').val(filekey);
+  $('#blobkey').val(blobkey);
+
+  $('#filesplit').removeAttr('disabled');
 }
 

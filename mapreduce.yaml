@@ -1,0 +1,20 @@
+mapreduce:
+- name: Import freeway loopdata
+  params:
+  - name: done_callback
+    value: /done
+  mapper:
+    handler: filesplit.import_loopdata
+    input_reader: mapreduce.input_readers.BlobstoreZipInputReader
+    params:
+    - name: blob_key
+- name: Split lines using regular expression
+  params:
+  - name: done_callback
+    value: /done
+  mapper:
+    handler: filesplit.split_file
+    input_reader: mapreduce.input_readers.BlobstoreZipInputReader
+    params:
+    - name: blob_key
+    - name: split_re

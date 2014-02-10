@@ -1,0 +1,213 @@
+#!/usr/bin/env python
+
+import webapp2
+import logging
+import os
+import re
+
+from google.appengine.ext import ndb
+from google.appengine.ext.webapp import template
+
+from google.appengine.ext import blobstore
+from google.appengine.ext.webapp import blobstore_handlers
+
+from google.appengine.api import files
+from google.appengine.api import taskqueue
+
+from mapreduce import base_handler
+from mapreduce import mapreduce_pipeline
+from mapreduce import operation as op
+from mapreduce import shuffler
+from mapreduce import context
+from mapreduce import util
+
+import zipfile
+import StringIO
+
+from FileMetadata import FileMetadata
+from BaseHandler import BaseHandler
+
+class IndexHandler(BaseHandler):
+  """The main page that users will interact with, which presents users with
+  the ability to upload new data or run MapReduce jobs on their existing data.
+  """
+
+  def get(self):
+    q = FileMetadata.query()
+    results = q.fetch(10)
+
+    items = [result for result in results]
+    length = len(items)
+	
+    self.render_template("filesplit.html",{
+						 "items": items,
+						 "length": length})
+
+  def post(self):
+    filekey = self.request.get("filekey")
+    blob_key = self.request.get("blobkey")
+
+    if self.request.get("filesplit"):
+      logging.info("Starting file split...")
+      pipeline = FileSplitPipeline(filekey, blob_key)
+      pipeline.start()
+      self.redirect(pipeline.base_path + "/status?root=" + pipeline.pipeline_id)
+    else:
+	  logging.info("Unrecognized operation.")
+
+def split_into_chunks(s, c):
+	chunks = []
+	remainder = s
+	while len(remainder) >= 0:
+		chunks.append(remainder[:c])
+		remainder = remainder[c:]
+		if len(remainder) < c:
+			break
+	logging.info("Returning chunks:%s" % chunks)
+	return chunks
+
+def file_split_map(data):
+  """File split map function"""
+  (byte_offset, line_value) = data
+  
+  logging.debug("Got %s", line_value)
+  day = re.search('.*2011-09-30 00:05.*', line_value)
+  if day:
+    yield (day.group()[0], line_value)
+
+
+def file_split_reduce(key, values):
+  """File split reduce function."""
+  for value in values:
+    yield "%s\n" % value
+
+class FileSplitPipeline(base_handler.PipelineBase):
+  """A pipeline to run file split.
+
+  Args:
+    blobkey: blobkey to process as string. Should be a zip archive with
+      text files inside.
+  """
+
+
+  def run(self, filekey, blobkey):
+    output = yield mapreduce_pipeline.MapreducePipeline(
+        "file_split",
+        "filesplit.file_split_map",
+        "filesplit.file_split_reduce",
+        "mapreduce.input_readers.BlobstoreZipLineInputReader",
+        "mapreduce.output_writers.BlobstoreOutputWriter",
+		mapper_params={
+            "blob_keys": blobkey,
+        },
+        reducer_params={
+            "mime_type": "text/plain",
+        },
+        shards=16)
+    yield StoreOutput("FileSplit", filekey, output)
+
+class StoreOutput(base_handler.PipelineBase):
+  """A pipeline to store the result of the MapReduce job in the database.
+
+  Args:
+    mr_type: the type of mapreduce job run (e.g., FileSplit)
+    encoded_key: the DB key corresponding to the metadata of this job
+    output: the blobstore location where the output of the job is stored
+  """
+
+  def run(self, mr_type, encoded_key, output):
+    logging.info("output is %s" % str(output))
+    logging.info("key is %s" % encoded_key)
+    key = ndb.Key(FileMetadata, encoded_key)
+    m = key.get()
+
+    if mr_type == "FileSplit":
+      blob_key = blobstore.BlobKey(output[0])
+      if blob_key:
+        m.chunks.append(blob_key)
+      else:
+	    logging.error("Could not get key from output")
+
+    m.put()
+
+
+
+""" Pre-defined MapReduce job  "split_file" that will split lines using regular expressions (specified in mapreduce.yaml)
+  
+  Args:
+    entity: entity to process as string. Should be a zip archive with
+      text files inside.
+"""
+class DoneHandler(webapp2.RequestHandler):
+  """Handler for completion of split_file operation."""
+  def post(self):
+    logging.info("Import done %s" % self.request.arguments())
+    logging.info("Done")
+
+def split_file(entity):
+  """ Method defined for "Split lines using regular expression" MR job specified in mapreduce.yaml
+  
+  Args:
+    entity: entity to process as string. Should be a zip archive with
+      text files inside.
+  """
+  ctx = context.get()
+  params = ctx.mapreduce_spec.mapper.params
+  blob_key = params['blob_key']
+  split_re = params['split_re']
+  
+  logging.info("Got key:%s expression:%s", blob_key, split_re)
+  blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
+  for line in blob_reader:
+    logging.info("Got line:%s", line)
+
+
+""" Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file)
+  
+  Args:
+    entity: entity to process as string. Should be a zip archive with
+      text files inside.
+"""
+class ImportDoneHandler(webapp2.RequestHandler):
+  """Handler for completion of split_file operation."""
+  def post(self):
+    logging.info("Import done %s" % self.request.arguments())
+
+from mapreduce import operation as op
+
+def import_loopdata(entity):
+	""" Method defined for "Import freeway loopdata" MR job specified in mapreduce.yaml
+		
+		Args:
+		entity: entity to process as string. Should be a zip archive with
+		text files inside.
+		"""
+	ctx = context.get()
+	params = ctx.mapreduce_spec.mapper.params
+	blob_key = params['blob_key']
+	
+	logging.info("Got key:%s", blob_key)
+	blob_reader = blobstore.BlobReader(blob_key)
+	logging.info("Got filename:%s", blob_reader.blob_info.filename)
+	if blob_reader.blob_info.filename == 'freeway_loopdata.csv.zip':
+		for line in blob_reader:
+			logging.info("Got line:%s", line)
+#			if 'detectorid' in line:
+#				l = LoopData(detectorid=int(line['detectorid']),
+#							starttime=datetime.datetime.strptime(line['starttime'], "%Y-%m-%d %H:%M:%S-07"),
+#							status=int(line['status']),
+#							dqflags=int(line['dqflags']))
+#				if line['volume'] != '':
+#					setattr(l, 'volume', int(line['volume']))
+#				if line['speed'] != '':
+#					setattr(l, 'speed', int(line['speed']))
+#				if line['occupancy'] != '':
+#					setattr(l, 'occupancy', int(line['occupancy']))
+#				yield op.l.put()
+
+app = webapp2.WSGIApplication(
+    [
+        ('/done', DoneHandler),
+		('/filesplit', IndexHandler),
+    ],
+    debug=True)
