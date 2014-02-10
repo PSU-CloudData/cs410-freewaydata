@@ -4,6 +4,8 @@ import webapp2
 import logging
 import os
 import re
+import csv
+import datetime
 
 from google.appengine.ext import ndb
 from google.appengine.ext.webapp import template
@@ -24,6 +26,7 @@ from mapreduce import util
 import zipfile
 import StringIO
 
+from FreewayData import Highway, Station, Detector, LoopData
 from FileMetadata import FileMetadata
 from BaseHandler import BaseHandler
 
@@ -187,23 +190,37 @@ def import_loopdata(entity):
 	blob_key = params['blob_key']
 	
 	logging.info("Got key:%s", blob_key)
-	blob_reader = blobstore.BlobReader(blob_key)
+	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
 	logging.info("Got filename:%s", blob_reader.blob_info.filename)
-	if blob_reader.blob_info.filename == 'freeway_loopdata.csv.zip':
-		for line in blob_reader:
-			logging.info("Got line:%s", line)
-#			if 'detectorid' in line:
-#				l = LoopData(detectorid=int(line['detectorid']),
-#							starttime=datetime.datetime.strptime(line['starttime'], "%Y-%m-%d %H:%M:%S-07"),
-#							status=int(line['status']),
-#							dqflags=int(line['dqflags']))
-#				if line['volume'] != '':
-#					setattr(l, 'volume', int(line['volume']))
-#				if line['speed'] != '':
-#					setattr(l, 'speed', int(line['speed']))
-#				if line['occupancy'] != '':
-#					setattr(l, 'occupancy', int(line['occupancy']))
-#				yield op.l.put()
+	if blob_reader.blob_info.filename == 'freeway_loopdata_short.csv.zip':
+		if blob_reader.blob_info.content_type == "application/zip":
+			# the file is a zip archive
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			zip_file = zipfile.ZipFile(blob_reader)
+			file = zip_file.open(zip_file.namelist()[0])
+		elif blob_reader.blob_info.content_type == "text/plain":
+			# the file is plain text archive
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			file = blob_reader
+		else:
+			logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
+		
+		if file:
+			csv_reader = csv.DictReader(file)
+			for line in csv_reader:
+				logging.info("Got line:%s", line)
+				if 'detectorid' in line:
+					l = LoopData(detectorid=int(line['detectorid']),
+								starttime=datetime.datetime.strptime(line['starttime'], "%Y-%m-%d %H:%M:%S-07"),
+								status=int(line['status']),
+								dqflags=int(line['dqflags']))
+					if line['volume'] != '':
+						setattr(l, 'volume', int(line['volume']))
+					if line['speed'] != '':
+						setattr(l, 'speed', int(line['speed']))
+					if line['occupancy'] != '':
+						setattr(l, 'occupancy', int(line['occupancy']))
+					yield op.db.Put(l)
 
 app = webapp2.WSGIApplication(
     [

@@ -15,6 +15,7 @@ mapreduce:
   mapper:
     handler: filesplit.split_file
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
+    output_writer: mapreduce.output_writers.DatastoreOutputWriter
     params:
     - name: blob_key
     - name: split_re
