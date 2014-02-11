@@ -22,6 +22,7 @@ from mapreduce import operation as op
 from mapreduce import shuffler
 from mapreduce import context
 from mapreduce import util
+from mapreduce import model
 
 import zipfile
 import StringIO
@@ -174,7 +175,16 @@ def split_file(entity):
 class ImportDoneHandler(webapp2.RequestHandler):
   """Handler for completion of split_file operation."""
   def post(self):
-    logging.info("Import done %s" % self.request.arguments())
+    job_id = self.request.headers['Mapreduce-Id']
+    state = model.MapreduceState.get_by_job_id(job_id)
+    logging.info("Import for job %s done" % job_id)
+    counters = state.counters_map.counters
+    # Remove counter not needed for stats
+    if 'mapper_calls' in counters.keys():
+		del counters['mapper_calls']
+    for counter in counters.keys():
+	  if counter != 'mapper_calls' and counter != 'mapper-walltime-ms':
+	    logging.info("Counter %s:%s", counter, counters[counter])
 
 from mapreduce import operation as op
 
@@ -192,14 +202,13 @@ def import_loopdata(entity):
 	logging.info("Got key:%s", blob_key)
 	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
 	logging.info("Got filename:%s", blob_reader.blob_info.filename)
-	if blob_reader.blob_info.filename == 'freeway_loopdata_short.csv.zip':
+	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
+	if fw_ld:
 		if blob_reader.blob_info.content_type == "application/zip":
-			# the file is a zip archive
 			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
 			zip_file = zipfile.ZipFile(blob_reader)
 			file = zip_file.open(zip_file.namelist()[0])
 		elif blob_reader.blob_info.content_type == "text/plain":
-			# the file is plain text archive
 			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
 			file = blob_reader
 		else:
@@ -207,24 +216,19 @@ def import_loopdata(entity):
 		
 		if file:
 			csv_reader = csv.DictReader(file)
-			for line in csv_reader:
-				logging.info("Got line:%s", line)
-				if 'detectorid' in line:
-					l = LoopData(detectorid=int(line['detectorid']),
-								starttime=datetime.datetime.strptime(line['starttime'], "%Y-%m-%d %H:%M:%S-07"),
-								status=int(line['status']),
-								dqflags=int(line['dqflags']))
-					if line['volume'] != '':
-						setattr(l, 'volume', int(line['volume']))
-					if line['speed'] != '':
-						setattr(l, 'speed', int(line['speed']))
-					if line['occupancy'] != '':
-						setattr(l, 'occupancy', int(line['occupancy']))
-					yield op.db.Put(l)
+			csv_headers = csv_reader.fieldnames
+			if 'speed' in csv_headers:
+				for line in csv_reader:
+					#logging.info("Got line:%s", line)
+					date = re.search('(..-..-..) .*', line['starttime'])
+					if line['speed'] != '' and date:
+						yield op.counters.Increment('%s_speed_sum' % date.group()[:8], int(line['speed']))
+			else:
+				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
 
 app = webapp2.WSGIApplication(
     [
-        ('/done', DoneHandler),
+        ('/done', ImportDoneHandler),
 		('/filesplit', IndexHandler),
     ],
     debug=True)

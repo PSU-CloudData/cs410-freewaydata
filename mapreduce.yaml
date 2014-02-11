@@ -8,6 +8,11 @@ mapreduce:
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
     params:
     - name: blob_key
+    - name: processing_rate
+      default: 100
+    - name: shard_count
+      default: 16
+
 - name: Split lines using regular expression
   params:
   - name: done_callback
@@ -15,7 +20,6 @@ mapreduce:
   mapper:
     handler: filesplit.split_file
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
-    output_writer: mapreduce.output_writers.DatastoreOutputWriter
     params:
     - name: blob_key
     - name: split_re
