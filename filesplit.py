@@ -149,22 +149,42 @@ class DoneHandler(webapp2.RequestHandler):
     logging.info("Done")
 
 def split_file(entity):
-  """ Method defined for "Split lines using regular expression" MR job specified in mapreduce.yaml
-  
-  Args:
-    entity: entity to process as string. Should be a zip archive with
-      text files inside.
-  """
-  ctx = context.get()
-  params = ctx.mapreduce_spec.mapper.params
-  blob_key = params['blob_key']
-  split_re = params['split_re']
-  
-  logging.info("Got key:%s expression:%s", blob_key, split_re)
-  blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
-  for line in blob_reader:
-    logging.info("Got line:%s", line)
+	""" Method defined for "Split lines using regular expression" MR job specified in mapreduce.yaml
 
+	Args:
+	entity: entity to process as string. Should be a zip archive with
+	  text files inside.
+	"""
+	ctx = context.get()
+	params = ctx.mapreduce_spec.mapper.params
+	blob_key = params['blob_key']
+	split_re = params['split_re']
+
+	logging.info("Got key:%s expression:%s", blob_key, split_re)
+	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
+	logging.info("Got filename:%s", blob_reader.blob_info.filename)
+	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
+	if fw_ld:
+	if blob_reader.blob_info.content_type == "application/zip":
+		logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+		zip_file = zipfile.ZipFile(blob_reader)
+		file = zip_file.open(zip_file.namelist()[0])
+	elif blob_reader.blob_info.content_type == "text/plain":
+		logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+		file = blob_reader
+	else:
+		logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
+
+	if file:
+		csv_reader = csv.DictReader(file)
+		csv_headers = csv_reader.fieldnames
+		if 'speed' in csv_headers:
+			for line in csv_reader:
+				date = re.search('.*(%s).*' % split_re, line['starttime'])
+				if date:
+					logging.info("%s", line)
+		else:
+			logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
 
 """ Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file)
   
@@ -186,10 +206,55 @@ class ImportDoneHandler(webapp2.RequestHandler):
 	  if counter != 'mapper_calls' and counter != 'mapper-walltime-ms':
 	    logging.info("Counter %s:%s", counter, counters[counter])
 
-from mapreduce import operation as op
 
 def import_loopdata(entity):
 	""" Method defined for "Import freeway loopdata" MR job specified in mapreduce.yaml
+		
+		Args:
+		entity: entity to process as string. Should be a zip archive with
+		text files inside.
+		"""
+	ctx = context.get()
+	params = ctx.mapreduce_spec.mapper.params
+	blob_key = params['blob_key']
+	
+	logging.info("Got key:%s", blob_key)
+	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
+	logging.info("Got filename:%s", blob_reader.blob_info.filename)
+	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
+	if fw_ld:
+		if blob_reader.blob_info.content_type == "application/zip":
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			zip_file = zipfile.ZipFile(blob_reader)
+			file = zip_file.open(zip_file.namelist()[0])
+		elif blob_reader.blob_info.content_type == "text/plain":
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			file = blob_reader
+		else:
+			logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
+		
+		if file:
+			csv_reader = csv.DictReader(file)
+			for line in csv_reader:
+ 				logging.info("Got line:%s", line)
+ 				if 'detectorid' in line:
+ 					l = LoopData(detectorid=int(line['detectorid']),
+ 								starttime=datetime.datetime.strptime(line['starttime'], "%Y-%m-%d %H:%M:%S-07"),
+ 								status=int(line['status']),
+ 								dqflags=int(line['dqflags']))
+ 					if line['volume'] != '':
+ 						setattr(l, 'volume', int(line['volume']))
+ 					if line['speed'] != '':
+						setattr(l, 'speed', int(line['speed']))
+ 					if line['occupancy'] != '':
+ 						setattr(l, 'occupancy', int(line['occupancy']))
+ 					yield op.db.Put(l)
+		else:
+				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
+
+
+def daily_speed_sum(entity):
+	""" Method defined for "Perform daily speed sum" MR job specified in mapreduce.yaml
 		
 		Args:
 		entity: entity to process as string. Should be a zip archive with
@@ -220,11 +285,13 @@ def import_loopdata(entity):
 			if 'speed' in csv_headers:
 				for line in csv_reader:
 					#logging.info("Got line:%s", line)
-					date = re.search('(..-..-..) .*', line['starttime'])
+					date = re.search('(2011-..-..) .*', line['starttime'])
 					if line['speed'] != '' and date:
-						yield op.counters.Increment('%s_speed_sum' % date.group()[:8], int(line['speed']))
+						yield op.counters.Increment('%s_speed_count' % date.group()[:10])
+						yield op.counters.Increment('%s_speed_sum' % date.group()[:10], int(line['speed']))
 			else:
 				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
+
 
 app = webapp2.WSGIApplication(
     [
