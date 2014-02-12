@@ -165,26 +165,26 @@ def split_file(entity):
 	logging.info("Got filename:%s", blob_reader.blob_info.filename)
 	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
 	if fw_ld:
-	if blob_reader.blob_info.content_type == "application/zip":
-		logging.info("Got content type:%s", blob_reader.blob_info.content_type)
-		zip_file = zipfile.ZipFile(blob_reader)
-		file = zip_file.open(zip_file.namelist()[0])
-	elif blob_reader.blob_info.content_type == "text/plain":
-		logging.info("Got content type:%s", blob_reader.blob_info.content_type)
-		file = blob_reader
-	else:
-		logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
-
-	if file:
-		csv_reader = csv.DictReader(file)
-		csv_headers = csv_reader.fieldnames
-		if 'speed' in csv_headers:
-			for line in csv_reader:
-				date = re.search('.*(%s).*' % split_re, line['starttime'])
-				if date:
-					logging.info("%s", line)
+		if blob_reader.blob_info.content_type == "application/zip":
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			zip_file = zipfile.ZipFile(blob_reader)
+			file = zip_file.open(zip_file.namelist()[0])
+		elif blob_reader.blob_info.content_type == "text/plain":
+			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+			file = blob_reader
 		else:
-			logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
+			logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
+
+		if file:
+			csv_reader = csv.DictReader(file)
+			csv_headers = csv_reader.fieldnames
+			if 'speed' in csv_headers:
+				for line in csv_reader:
+					date = re.search('.*(%s).*' % split_re, line['starttime'])
+					if date:
+						logging.info("%s", line)
+			else:
+				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
 
 """ Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file)
   
