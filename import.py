@@ -5,23 +5,29 @@ import logging
 import csv
 import datetime
 
-from FreewayData import Highway, Station, Detector, LoopData
-
 from google.appengine.ext import blobstore
 from google.appengine.ext.blobstore import BlobInfo
 from google.appengine.ext import ndb
-
 from google.appengine.ext.webapp import blobstore_handlers
 
 from FileMetadata import FileMetadata
 from BaseHandler import BaseHandler
+from FreewayData import Highway, Station, Detector, LoopData
 
 """
 Upload request handlers
 """
 
 class FileUploadFormHandler(BaseHandler):
+	""" FileUploadFormHandler class definition
+	
+	Provides a file upload interface
+	"""
 	def get(self):
+		""" respond to HTTP GET requests
+	
+		Display a user interface for uploading data to Blobstore
+		"""
 		q = FileMetadata.query()
 		results = q.fetch(10)
 		
@@ -38,6 +44,10 @@ class FileUploadFormHandler(BaseHandler):
 	
 	
 	def post(self):
+		""" respond to HTTP POST requests
+	
+		Perform import of blob data referenced by blobkey
+		"""
 		# get the resource key
 		resource = self.request.get('blobkey')
 		# get BlobInfo from the blobstore using resource key
@@ -108,7 +118,15 @@ class FileUploadFormHandler(BaseHandler):
 
 
 class FileUploadHandler(blobstore_handlers.BlobstoreUploadHandler):
+	""" FileUploadHandler class definition
+	
+	Handle uploads of data to Blobstore
+	"""
 	def post(self):
+		""" respond to HTTP POST requests
+	
+		Create FileMetadata entity in Datastore to keep track of uploaded files
+		"""
 		blob_info = self.get_uploads()[0]
 		
 		file_metadata = FileMetadata(id = str(blob_info.key()),
@@ -124,7 +142,18 @@ class FileUploadHandler(blobstore_handlers.BlobstoreUploadHandler):
 
 
 class FileInfoHandler(BaseHandler):
+	""" FileInfoHandler class definition
+	
+	Display information about uploaded files
+	"""
 	def get(self, file_id):
+		""" Respond to HTTP GET requests
+	
+		Render a file info page from FileMetadata matching key file_id
+		
+		Args:
+		  file_id: a key that references some FileMetadata entity in the Datastore
+		"""
 		file_key = ndb.Key(FileMetadata, str(urllib.unquote(file_id)).strip())
 		file_info = file_key.get()
 		logging.info("File info:%s for key:%s", file_info, file_key)
@@ -137,7 +166,18 @@ class FileInfoHandler(BaseHandler):
 
 
 class FileDownloadHandler(blobstore_handlers.BlobstoreDownloadHandler):
+	""" FileDownloadHandler class definition
+	
+	Download files from Blobstore
+	"""
 	def get(self, file_id):
+		""" Respond to HTTP GET requests
+		
+		Download files from Blobstore that are referenced by file_id key
+		
+		Args:
+		  file_id a key that references some FileMetadata entity in the Datastore
+		"""
 		file_info = str(urllib.unquote(file_id)).strip()
 		if not file_info:
 			self.error(404)

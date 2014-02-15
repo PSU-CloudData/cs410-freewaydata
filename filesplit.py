@@ -32,11 +32,18 @@ from FileMetadata import FileMetadata
 from BaseHandler import BaseHandler
 
 class IndexHandler(BaseHandler):
-  """The main page that users will interact with, which presents users with
+  """ base IndexHandler for Filesplit MapReduce page
+  
+  The main page that users will interact with, which presents users with
   the ability to upload new data or run MapReduce jobs on their existing data.
   """
 
   def get(self):
+    """ respond to HTTP GET requests
+      
+    Display main page that users will interact with, which presents users with
+    the ability to upload new data or run MapReduce jobs on existing data.
+	"""
     q = FileMetadata.query()
     results = q.fetch(10)
 
@@ -48,6 +55,10 @@ class IndexHandler(BaseHandler):
 						 "length": length})
 
   def post(self):
+    """ respond to HTTP POST requests
+      
+    Perform requested MapReduce operation on Datastore or Blobstore.
+	"""
     filekey = self.request.get("filekey")
     blob_key = self.request.get("blobkey")
 
@@ -60,6 +71,10 @@ class IndexHandler(BaseHandler):
 	  logging.info("Unrecognized operation.")
 
 def split_into_chunks(s, c):
+	""" split a string into several chunks
+	      
+	Chunk data from blobstore for efficiency when sharding MapReduce jobs.
+	"""
 	chunks = []
 	remainder = s
 	while len(remainder) >= 0:
@@ -95,6 +110,10 @@ class FileSplitPipeline(base_handler.PipelineBase):
 
 
   def run(self, filekey, blobkey):
+    """ run the FileSplit MapReduce job
+	      
+    Setup the MapReduce pipeline and yield StoreOutput function
+	"""
     output = yield mapreduce_pipeline.MapreducePipeline(
         "file_split",
         "filesplit.file_split_map",
@@ -199,11 +218,12 @@ class ImportDoneHandler(webapp2.RequestHandler):
     state = model.MapreduceState.get_by_job_id(job_id)
     logging.info("Import for job %s done" % job_id)
     counters = state.counters_map.counters
-    # Remove counter not needed for stats
-    if 'mapper_calls' in counters.keys():
-		del counters['mapper_calls']
+    # Remove counters not needed for stats
+    if 'mapper-calls' in counters.keys():
+		del counters['mapper-calls']
+    if 'mapper-walltime-ms' in counters.keys():
+		del counters['mapper-walltime-ms']
     for counter in counters.keys():
-	  if counter != 'mapper_calls' and counter != 'mapper-walltime-ms':
 	    logging.info("Counter %s:%s", counter, counters[counter])
 
 
@@ -266,32 +286,34 @@ def daily_speed_sum(entity):
 	
 	logging.info("Got key:%s", blob_key)
 	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
-	logging.info("Got filename:%s", blob_reader.blob_info.filename)
-	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
-	if fw_ld:
-		if blob_reader.blob_info.content_type == "application/zip":
-			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
-			zip_file = zipfile.ZipFile(blob_reader)
-			file = zip_file.open(zip_file.namelist()[0])
-		elif blob_reader.blob_info.content_type == "text/plain":
-			logging.info("Got content type:%s", blob_reader.blob_info.content_type)
-			file = blob_reader
-		else:
-			logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
-		
-		if file:
-			csv_reader = csv.DictReader(file)
-			csv_headers = csv_reader.fieldnames
-			if 'speed' in csv_headers:
-				for line in csv_reader:
-					#logging.info("Got line:%s", line)
-					date = re.search('(2011-..-..) .*', line['starttime'])
-					if line['speed'] != '' and date:
-						yield op.counters.Increment('%s_speed_count' % date.group()[:10])
-						yield op.counters.Increment('%s_speed_sum' % date.group()[:10], int(line['speed']))
+	if blob_reader:
+		logging.info("Got filename:%s", blob_reader.blob_info.filename)
+		fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
+		if fw_ld:
+			if blob_reader.blob_info.content_type == "application/zip":
+				logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+				zip_file = zipfile.ZipFile(blob_reader)
+				file = zip_file.open(zip_file.namelist()[0])
+			elif blob_reader.blob_info.content_type == "text/plain":
+				logging.info("Got content type:%s", blob_reader.blob_info.content_type)
+				file = blob_reader
 			else:
-				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
-
+				logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
+			
+			if file:
+				csv_reader = csv.DictReader(file)
+				csv_headers = csv_reader.fieldnames
+				if 'speed' in csv_headers:
+					for line in csv_reader:
+						#logging.info("Got line:%s", line)
+						date = re.search('(2011-..-..) .*', line['starttime'])
+						if line['speed'] != '' and date:
+							yield op.counters.Increment('%s_%s_speed_count' % (line['detectorid'], date.group()[:10]))
+							yield op.counters.Increment('%s_%s_speed_sum' % (line['detectorid'], date.group()[:10]), int(line['speed']))
+				else:
+					logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
+	else:
+		logging.error("No blob was found for key %s", blob_key)
 
 app = webapp2.WSGIApplication(
     [

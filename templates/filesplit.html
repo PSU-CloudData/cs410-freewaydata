@@ -11,7 +11,7 @@
 			<!-- Display uploaded files, and allow for use with FileSplit MR job -->
 			<!-- navigation menu -->
 			<div>
-				<a href="/">Query</a> <a href="/import">Import</a> <a href="/filesplit">Utilities</a> <strong>Filesplit</strong> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
+				<a href="/">Query</a> <a href="/import">Import</a> <a href="/utilities">Utilities</a> <strong>Filesplit</strong> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
 			</div>
 			<hr/>
 			<div>
@@ -24,6 +24,7 @@
 						<td>uploaded on</td>
 						<td>content type</td>
 						<td>md5</td>
+						<td>blobkey</td>
 					</tr>
 					{% for item in items %}
 					<tr>
@@ -33,6 +34,7 @@
 						<td>{{ item.creation }}</td>
 						<td>{{ item.content_type }}</td>
 						<td>{{ item.md5_hash }}</td>
+						<td>{{ item.blobkey }}</td>
 					</tr>
 					{% endfor %}
 				</table>

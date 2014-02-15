@@ -1,7 +1,10 @@
 from google.appengine.ext import ndb
 
-""" FileMetadata ndb class definition """
 class FileMetadata(ndb.Model):
+	"""A helper class that will hold metadata for uploaded blobs.
+	
+	Keep track of where a file is uploaded to, along with other file statistics.
+	"""
 	content_type = ndb.StringProperty()
 	creation = ndb.DateTimeProperty()
 	filename = ndb.StringProperty()

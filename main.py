@@ -25,14 +25,36 @@ from BaseHandler import BaseHandler
 from FreewayData import Highway, Station, Detector, LoopData
 
 class FreewayDataHandler(BaseHandler):
+	""" FreewayDataHandler class definition
+	
+	Respond to requests for time travel queries
+	"""
 
 	def getHighways(self):
+		""" get a list of highway entities
+	
+		Query the datastore for the list of highways
+		
+		Returns:
+		  list of Highway entities
+		"""
+	
 		hwy_q = Highway.query()
 		results = hwy_q.fetch(12)
 		hwys = [hwy for hwy in results]
 		return hwys
 	
 	def getStationsForHighway(self, hw, dir):
+		""" get a list of station entities
+	
+		Query the datastore for a list of station entities located on a specific highway
+	
+		Args:
+		  hw: highwayname that contains the desired stations
+		  dir: direction of highway for stations that are requested
+		Returns:
+		  list of Station entities
+		"""
 		hwy_q = Highway.query(Highway.highwayname == hw, Highway.shortdirection == dir)
 		stations = []
 		for hwy in hwy_q.fetch():
@@ -42,6 +64,10 @@ class FreewayDataHandler(BaseHandler):
 		return stations
 	
 	def get(self):
+		""" handle HTTP GET requests
+	
+		Allow users to query by start/end date, highway, and direction
+		"""
 		if self.request.get("startdate", default_value = '09/15/2011') != '':
 			sdate = self.request.get("startdate", default_value = '09/22/2011')
 		else:
@@ -84,6 +110,16 @@ class FreewayDataHandler(BaseHandler):
 
 
 	def travelTime(self, start, end, hw, dir):
+		""" get travel time
+		
+		Calculate travel time for a specific highway, direction, and timespan.
+	
+		Args:
+		  start: datetime object describing start of time interval being queried
+		  end: datetime object describing end of time interval queried
+		  hw: highwayname that contains the desired stations and detectors
+		  dir: direction of highway for stations that are requested
+		"""
 		stations = getStationsForHighway(hw)
 		
 		for stn in stations:

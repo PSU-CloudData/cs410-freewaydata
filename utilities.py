@@ -8,9 +8,15 @@ from FreewayData import Highway, Station, Detector, LoopData
 from BaseHandler import BaseHandler
 
 class UtilitiesDataHandler(BaseHandler):
-
-	# method definition for the 'GET' HTTP operation
+	""" UtilitiesDataHandler class definition
+	
+	Utilities to perform operations on stored data and blobs
+	"""
 	def get(self):
+		""" Respond to HTTP GET requests
+	
+		Perform chosen operations on data in Datastore and Blobstore
+		"""
 		if self.request.get("combine", default_value = '') == "detectors":
 			starttime = datetime.datetime.now()
 			self.response.out.write("Performing detector combine...<br/>")
@@ -33,9 +39,12 @@ class UtilitiesDataHandler(BaseHandler):
 			self.render_template("utilities.html", {})
 
 
-	# combine method performs combination of Station and Detector data
 	def combine_detectors(self):
-		# store all detectors in stations
+		""" combine Station and Detector data records in datastore
+	
+		Append each Detector record to the corresponding Station's list of detectors properties.
+		Remove Detector entities once they have been imported.
+		"""
 		stns = []
 		det_q = Detector.query()
 		for det in det_q.fetch():
@@ -47,12 +56,14 @@ class UtilitiesDataHandler(BaseHandler):
 					stn.put()
 					response = "<hr>Put detector:%s in station:%s<br/>" % (det.key, stn)
 					self.response.out.write(response)
-		#remove detectors from datatore after combination
 		self.deleteDetectors()
 
 
 	def combine_stations(self):
-		# store all stations in highways
+		""" store Station entity keys in Highway records in datastore
+	
+		Append each Station entity's key to the corresponding Highway's list of stations.
+		"""
 		stns = []
 		stn_q = Station.query()
 		for stn in stn_q.fetch():
@@ -65,12 +76,14 @@ class UtilitiesDataHandler(BaseHandler):
 
 
 	def deleteDetectors(self):
+		""" delete all Detector entities from datastore """
 		detector_keys = Detector.query().fetch(keys_only = True)
 		detector_entities = ndb.get_multi(detector_keys)
 		ndb.delete_multi([d.key for d in detector_entities])
 
 
 	def deleteData(self):
+		""" delete all LoopData entities from datastore """
 		loopdata_keys = LoopData.query().fetch(keys_only = True)
 		loopdata_entities = ndb.get_multi(loopdata_keys)
 		ndb.delete_multi([l.key for l in loopdata_entities])
