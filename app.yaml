@@ -41,11 +41,14 @@ handlers:
 - url: /utilities
   script: utilities.app
 
-- url: /filesplit
-  script: filesplit.app
+- url: /map_reduce
+  script: map_reduce.app
 
 - url: /done
-  script: filesplit.app
+  script: map_reduce.app
+
+- url: /blobstore/(.*)
+  script: import.app
   
 - url: /.*
   script: main.app

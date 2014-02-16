@@ -30,11 +30,11 @@ function updateImportForm(filekey, blobkey, filename) {
   $('#import').removeAttr('disabled');
 }
 
-function updateFilesplitForm(filekey, blobkey, filename) {
+function updateMapReduceForm(filekey, blobkey, filename) {
   $('#jobName').text(filename);
   $('#filekey').val(filekey);
   $('#blobkey').val(blobkey);
 
-  $('#filesplit').removeAttr('disabled');
+  $('#daily_speed_sum').removeAttr('disabled');
 }
 

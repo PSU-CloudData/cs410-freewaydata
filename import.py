@@ -190,4 +190,5 @@ app = webapp2.WSGIApplication([
 							   ('/upload', FileUploadHandler),
 							   ('/file/(.*)/download', FileDownloadHandler),
 							   ('/file/(.*)', FileInfoHandler),
+							   ('/blobstore/(.*)', FileDownloadHandler),
 							   ], debug=True)

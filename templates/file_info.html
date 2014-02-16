@@ -13,6 +13,9 @@
 				<tr><th>Content Type</th><td>{{file_info.content_type}}</td>
 				<tr><th>MD5 hash</th><td>{{file_info.md5_hash}}</td>
 				<tr><th>Blob key</th><td>{{file_info.blobkey}}</td></tr>
+				{% if file_info.daily_speed_sum %}
+				<tr><th>Daily Speed Sum</th><td>{{file_info.daily_speed_sum}}</td></tr>
+				{% endif %}
 			</table>
 			<p><a href="/file/{{file_info.blobkey}}/download">Download this file</a></p>
 		</div>

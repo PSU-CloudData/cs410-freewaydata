@@ -32,7 +32,7 @@ from FileMetadata import FileMetadata
 from BaseHandler import BaseHandler
 
 class IndexHandler(BaseHandler):
-  """ base IndexHandler for Filesplit MapReduce page
+  """ base IndexHandler for FreewayData MapReduce page
   
   The main page that users will interact with, which presents users with
   the ability to upload new data or run MapReduce jobs on their existing data.
@@ -50,7 +50,7 @@ class IndexHandler(BaseHandler):
     items = [result for result in results]
     length = len(items)
 	
-    self.render_template("filesplit.html",{
+    self.render_template("map_reduce.html",{
 						 "items": items,
 						 "length": length})
 
@@ -62,46 +62,58 @@ class IndexHandler(BaseHandler):
     filekey = self.request.get("filekey")
     blob_key = self.request.get("blobkey")
 
-    if self.request.get("filesplit"):
-      logging.info("Starting file split...")
-      pipeline = FileSplitPipeline(filekey, blob_key)
+    if self.request.get("daily_speed_sum"):
+      logging.info("Starting daily speed sum...")
+      pipeline = DailySpeedSumPipeline(filekey, blob_key)
       pipeline.start()
       self.redirect(pipeline.base_path + "/status?root=" + pipeline.pipeline_id)
     else:
 	  logging.info("Unrecognized operation.")
 
-def split_into_chunks(s, c):
-	""" split a string into several chunks
+def split_into_rows(s):
+	""" split a string into columns
 	      
-	Chunk data from blobstore for efficiency when sharding MapReduce jobs.
+	Split s into a list of values using the ',' character as a delimiter
 	"""
-	chunks = []
-	remainder = s
-	while len(remainder) >= 0:
-		chunks.append(remainder[:c])
-		remainder = remainder[c:]
-		if len(remainder) < c:
-			break
-	logging.info("Returning chunks:%s" % chunks)
-	return chunks
-
-def file_split_map(data):
-  """File split map function"""
-  (byte_offset, line_value) = data
-  
-  logging.debug("Got %s", line_value)
-  day = re.search('.*2011-09-30 00:05.*', line_value)
-  if day:
-    yield (day.group()[0], line_value)
+	return s.split('\n')
 
 
-def file_split_reduce(key, values):
-  """File split reduce function."""
-  for value in values:
-    yield "%s\n" % value
+def split_into_columns(s):
+	""" split a string into columns
+	      
+	Split s into a list of values using the ',' character as a delimiter
+	"""
+	s = re.sub(',,,', ',0,0,', s)
+	s = re.sub(',,', ',0,', s)
+	return s.split(',')
 
-class FileSplitPipeline(base_handler.PipelineBase):
-  """A pipeline to run file split.
+
+def daily_speed_sum_map(data):
+	"""Daily Speed Sum map function"""
+	(entry, text_fn) = data
+	text = text_fn()
+
+	for row in split_into_rows(text):
+		logging.debug("Got %s", row)
+		day = re.search('(2011-..-..) .*', row)
+		if day:
+			columns = split_into_columns(row)
+			yield (day.group()[:10], columns[3])
+
+
+def daily_speed_sum_reduce(key, values):
+	"""Daily Speed Sum reduce function."""
+	speedsum = 0
+	speedcount = 0
+	for value in values:
+		if int(value) > 0:
+			speedsum += int(value)
+			speedcount += 1
+	yield "%s: %s, %s\n" % (key, speedsum, speedcount)
+
+
+class DailySpeedSumPipeline(base_handler.PipelineBase):
+  """A pipeline to run daily_speed_sum.
 
   Args:
     blobkey: blobkey to process as string. Should be a zip archive with
@@ -110,30 +122,31 @@ class FileSplitPipeline(base_handler.PipelineBase):
 
 
   def run(self, filekey, blobkey):
-    """ run the FileSplit MapReduce job
+    """ run the DailySpeedSum MapReduce job
 	      
     Setup the MapReduce pipeline and yield StoreOutput function
 	"""
     output = yield mapreduce_pipeline.MapreducePipeline(
-        "file_split",
-        "filesplit.file_split_map",
-        "filesplit.file_split_reduce",
-        "mapreduce.input_readers.BlobstoreZipLineInputReader",
+        "daily_speed_sum",
+        "map_reduce.daily_speed_sum_map",
+        "map_reduce.daily_speed_sum_reduce",
+        "mapreduce.input_readers.BlobstoreZipInputReader",
         "mapreduce.output_writers.BlobstoreOutputWriter",
 		mapper_params={
-            "blob_keys": blobkey,
+            "blob_key": blobkey,
         },
         reducer_params={
             "mime_type": "text/plain",
         },
         shards=16)
-    yield StoreOutput("FileSplit", filekey, output)
+    yield StoreOutput("DailySpeedSum", filekey, output)
+
 
 class StoreOutput(base_handler.PipelineBase):
   """A pipeline to store the result of the MapReduce job in the database.
 
   Args:
-    mr_type: the type of mapreduce job run (e.g., FileSplit)
+    mr_type: the type of mapreduce job run (e.g., DailySpeedSum)
     encoded_key: the DB key corresponding to the metadata of this job
     output: the blobstore location where the output of the job is stored
   """
@@ -144,12 +157,10 @@ class StoreOutput(base_handler.PipelineBase):
     key = ndb.Key(FileMetadata, encoded_key)
     m = key.get()
 
-    if mr_type == "FileSplit":
-      blob_key = blobstore.BlobKey(output[0])
-      if blob_key:
-        m.chunks.append(blob_key)
-      else:
-	    logging.error("Could not get key from output")
+    if mr_type == "DailySpeedSum":
+	  blob_key = blobstore.BlobKey(output[0])
+	  if blob_key:
+	    m.daily_speed_sum = blob_key
 
     m.put()
 
@@ -169,6 +180,8 @@ class DoneHandler(webapp2.RequestHandler):
 
 def split_file(entity):
 	""" Method defined for "Split lines using regular expression" MR job specified in mapreduce.yaml
+
+	Note: this function will be problematic with large datasets due to counter map size limitation of 1MB
 
 	Args:
 	entity: entity to process as string. Should be a zip archive with
@@ -318,6 +331,6 @@ def daily_speed_sum(entity):
 app = webapp2.WSGIApplication(
     [
         ('/done', ImportDoneHandler),
-		('/filesplit', IndexHandler),
+		('/map_reduce', IndexHandler),
     ],
     debug=True)

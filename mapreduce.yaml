@@ -5,7 +5,7 @@ mapreduce:
   - name: done_callback
     value: /done
   mapper:
-    handler: filesplit.daily_speed_sum
+    handler: map_reduce.daily_speed_sum
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
     params:
     - name: blob_key
@@ -19,7 +19,7 @@ mapreduce:
   - name: done_callback
     value: /done
   mapper:
-    handler: filesplit.import_loopdata
+    handler: map_reduce.import_loopdata
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
     params:
     - name: blob_key
@@ -33,7 +33,7 @@ mapreduce:
   - name: done_callback
     value: /done
   mapper:
-    handler: filesplit.split_file
+    handler: map_reduce.split_file
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
     params:
     - name: blob_key

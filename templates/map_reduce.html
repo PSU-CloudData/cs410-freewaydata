@@ -1,6 +1,6 @@
 <html>
 	<head>
-		<title>Filesplit MapReduce job</title>
+		<title>FreewayData MapReduce job</title>
 		<script src="/mapreduce/jquery.js" type="text/javascript"></script>
 		<script src="/static/js/custom.js" type="text/javascript"></script>
 		<link href="/static/css/style.css" rel="stylesheet" type="text/css">
@@ -8,40 +8,46 @@
 	<body>
 		<div>
 			<h1>FreewayData</h1>
-			<!-- Display uploaded files, and allow for use with FileSplit MR job -->
+			<!-- Display uploaded files, and allow for use with MR jobs -->
 			<!-- navigation menu -->
 			<div>
-				<a href="/">Query</a> <a href="/import">Import</a> <a href="/utilities">Utilities</a> <strong>Filesplit</strong> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
+				<a href="/">Query</a> <a href="/import">Import</a> <a href="/utilities">Utilities</a> <strong>MapReduce</strong> <a href="/mapreduce/status">MapReduce Status</a> <a href="/_ah/stats">App Stats</a> <a href="http://localhost:8003">Console</a>
 			</div>
 			<hr/>
 			<div>
-				<h2>Select files to run FileSplit on</h2>
+				<h2>Select file to run MapReduce job on</h2>
 				{% if length %}
 				<table border=1>
 					<tr>
-						<td></td>
-						<td>name</td>
-						<td>uploaded on</td>
-						<td>content type</td>
-						<td>md5</td>
-						<td>blobkey</td>
+						<th></th>
+						<th>name</th>
+						<th>uploaded on</th>
+						<th>content type</th>
+						<th>md5</th>
+						<th>blobkey</th>
+						<th>daily_speed_sum</th>
 					</tr>
 					{% for item in items %}
 					<tr>
-						<td><input type="radio" name="file_radio" onclick="updateFilesplitForm('{{ item.blobkey }}',
+						<td><input type="radio" name="file_radio" onclick="updateMapReduceForm('{{ item.blobkey }}',
 							'{{ item.blobkey }}', '{{ item.filename }}');"></td>
 						<td><a href="/file/{{ item.blobkey }}/download">{{ item.filename }}</a></td>
 						<td>{{ item.creation }}</td>
 						<td>{{ item.content_type }}</td>
 						<td>{{ item.md5_hash }}</td>
 						<td>{{ item.blobkey }}</td>
+						<td>
+							{% if item.daily_speed_sum %}
+							<a href="{{ item.daily_speed_sum }}">view</a>
+							{% endif %}
+						</td>
 					</tr>
 					{% endfor %}
 				</table>
 				<br />
 				<br />
 				<h2>Run MapReduce job</h2>
-				<form action="/filesplit" method="post">
+				<form action="/map_reduce" method="post">
 					Input File: <label id="jobName">none selected</label>
 					<input type="hidden" name="filekey" id="filekey" value=""/>
 					<input type="hidden" name="blobkey" id="blobkey" value=""/>
@@ -49,7 +55,7 @@
 					<br />
 					<table>
 						<tr>
-							<td><input type="submit" id="filesplit" name="filesplit" value="FileSplit" disabled="true"></td>
+							<td><input type="submit" id="daily_speed_sum" name="daily_speed_sum" value="DailySpeedSum" disabled="true"></td>
 						</tr>
 					</table>
 				</form>
