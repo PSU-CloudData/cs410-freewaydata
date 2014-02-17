@@ -234,6 +234,8 @@ class ImportDoneHandler(webapp2.RequestHandler):
   def post(self):
     logging.info("Import done %s" % self.request.arguments())
     logging.info(self.request.headers)
+	
+    # use MR state to get original blob_key
     job_id = self.request.headers['Mapreduce-Id']
     state = model.MapreduceState.get_by_job_id(job_id)
 	
@@ -244,37 +246,42 @@ class ImportDoneHandler(webapp2.RequestHandler):
     input_blob_key = params['blob_key']
     logging.info("Input blob_key:%s", input_blob_key)
 	
-    logging.info("Import for job %s done" % job_id)
-    counters = state.counters_map.counters
-    # Remove counters not needed for stats
-    if 'mapper-calls' in counters.keys():
-		del counters['mapper-calls']
-    if 'mapper-walltime-ms' in counters.keys():
-		del counters['mapper-walltime-ms']
-    outputString = ''
-    file_meta_key = ndb.Key(FileMetadata, input_blob_key)
-    file_meta = file_meta_key.get()
-
-    for counter in counters.keys():
-      outputString += "%s: %s\n" % (counter, counters[counter])
-
-    # Create the file
-    file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+counter)
-
-    # Open the file and write to it
-    with files.open(file_name, 'a') as f:
-      f.write(outputString)
-
-    # Finalize the file. Do this before attempting to read it.
-    files.finalize(file_name)
-
-    # Get the file's blob key
-    logging.info(blobstore.BlobKey(file_name))
-    blob_key = files.blobstore.get_blob_key(file_name)
-
-    setattr(file_meta, 'daily_speed_sum', blob_key)
+	# use MR state to get job name
+    job_name = state.mapreduce_spec.name
+    logging.info("Got job name:%s", job_name)
 	
-    file_meta.put()
+    logging.info("Import for job %s done" % job_id)
+    if job_name == 'Perform daily speed sum':
+      counters = state.counters_map.counters
+      # Remove counters not needed for stats
+      if 'mapper-calls' in counters.keys():
+  		del counters['mapper-calls']
+      if 'mapper-walltime-ms' in counters.keys():
+  		del counters['mapper-walltime-ms']
+      outputString = ''
+      file_meta_key = ndb.Key(FileMetadata, input_blob_key)
+      file_meta = file_meta_key.get()
+
+      for counter in counters.keys():
+        outputString += "%s: %s\n" % (counter, counters[counter])
+
+      # Create the file
+      file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+counter)
+
+      # Open the file and write to it
+      with files.open(file_name, 'a') as f:
+        f.write(outputString)
+
+      # Finalize the file. Do this before attempting to read it.
+      files.finalize(file_name)
+
+      # Get the file's blob key
+      logging.info(blobstore.BlobKey(file_name))
+      blob_key = files.blobstore.get_blob_key(file_name)
+
+      setattr(file_meta, 'daily_speed_sum', blob_key)
+	
+      file_meta.put()
 
 
 def import_loopdata(entity):
