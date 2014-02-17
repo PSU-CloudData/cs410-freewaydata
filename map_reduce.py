@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 
+
+from __future__ import with_statement
 import webapp2
 import logging
 import os
 import re
 import csv
 import datetime
+import urllib
+import json
 
+from google.appengine.api import urlfetch
 from google.appengine.ext import ndb
 from google.appengine.ext.webapp import template
 
@@ -30,6 +35,9 @@ import StringIO
 from FreewayData import Highway, Station, Detector, LoopData
 from FileMetadata import FileMetadata
 from BaseHandler import BaseHandler
+
+#deprecated
+from google.appengine.api import files
 
 class IndexHandler(BaseHandler):
   """ base IndexHandler for FreewayData MapReduce page
@@ -87,30 +95,27 @@ def split_into_columns(s):
 	s = re.sub(',,', ',0,', s)
 	return s.split(',')
 
-
-def daily_speed_sum_map(data):
-	"""Daily Speed Sum map function"""
-	(entry, text_fn) = data
-	text = text_fn()
-
-	for row in split_into_rows(text):
-		logging.debug("Got %s", row)
-		day = re.search('(2011-..-..) .*', row)
-		if day:
-			columns = split_into_columns(row)
-			yield (day.group()[:10], columns[3])
-
-
-def daily_speed_sum_reduce(key, values):
-	"""Daily Speed Sum reduce function."""
+def sum_values(values):
 	speedsum = 0
 	speedcount = 0
 	for value in values:
 		if int(value) > 0:
 			speedsum += int(value)
 			speedcount += 1
-	yield "%s: %s, %s\n" % (key, speedsum, speedcount)
+	return (speedsum, speedcount)
 
+
+def daily_speed_sum_map(data):
+	"""Daily Speed Sum map function"""
+	(byte_offset, line_value) = data
+	columns = split_into_columns(line_value)
+	if columns[3] != 'speed':
+		yield ("%s_%s" % (columns[0], columns[1][:10]), columns[3])
+
+
+def daily_speed_sum_reduce(key, values):
+	"""Daily Speed Sum reduce function."""
+	yield "%s: %s, %s" % (key, sum([int(value) for value in values]), len(values))
 
 class DailySpeedSumPipeline(base_handler.PipelineBase):
   """A pipeline to run daily_speed_sum.
@@ -130,10 +135,10 @@ class DailySpeedSumPipeline(base_handler.PipelineBase):
         "daily_speed_sum",
         "map_reduce.daily_speed_sum_map",
         "map_reduce.daily_speed_sum_reduce",
-        "mapreduce.input_readers.BlobstoreZipInputReader",
+        "mapreduce.input_readers.BlobstoreZipLineInputReader",
         "mapreduce.output_writers.BlobstoreOutputWriter",
 		mapper_params={
-            "blob_key": blobkey,
+			"blob_keys": blobkey,
         },
         reducer_params={
             "mime_type": "text/plain",
@@ -163,7 +168,6 @@ class StoreOutput(base_handler.PipelineBase):
 	    m.daily_speed_sum = blob_key
 
     m.put()
-
 
 
 """ Pre-defined MapReduce job  "split_file" that will split lines using regular expressions (specified in mapreduce.yaml)
@@ -218,6 +222,7 @@ def split_file(entity):
 			else:
 				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
 
+
 """ Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file)
   
   Args:
@@ -227,8 +232,18 @@ def split_file(entity):
 class ImportDoneHandler(webapp2.RequestHandler):
   """Handler for completion of split_file operation."""
   def post(self):
+    logging.info("Import done %s" % self.request.arguments())
+    logging.info(self.request.headers)
     job_id = self.request.headers['Mapreduce-Id']
     state = model.MapreduceState.get_by_job_id(job_id)
+	
+    logging.info(state.mapreduce_spec)
+	
+	# use MR state to get original blob_key
+    params = state.mapreduce_spec.mapper.params
+    input_blob_key = params['blob_key']
+    logging.info("Input blob_key:%s", input_blob_key)
+	
     logging.info("Import for job %s done" % job_id)
     counters = state.counters_map.counters
     # Remove counters not needed for stats
@@ -236,8 +251,30 @@ class ImportDoneHandler(webapp2.RequestHandler):
 		del counters['mapper-calls']
     if 'mapper-walltime-ms' in counters.keys():
 		del counters['mapper-walltime-ms']
+    outputString = ''
+    file_meta_key = ndb.Key(FileMetadata, input_blob_key)
+    file_meta = file_meta_key.get()
+
     for counter in counters.keys():
-	    logging.info("Counter %s:%s", counter, counters[counter])
+      outputString += "%s: %s\n" % (counter, counters[counter])
+
+    # Create the file
+    file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+counter)
+
+    # Open the file and write to it
+    with files.open(file_name, 'a') as f:
+      f.write(outputString)
+
+    # Finalize the file. Do this before attempting to read it.
+    files.finalize(file_name)
+
+    # Get the file's blob key
+    logging.info(blobstore.BlobKey(file_name))
+    blob_key = files.blobstore.get_blob_key(file_name)
+
+    setattr(file_meta, 'daily_speed_sum', blob_key)
+	
+    file_meta.put()
 
 
 def import_loopdata(entity):
