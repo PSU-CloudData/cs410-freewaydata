@@ -12,3 +12,5 @@ class FileMetadata(ndb.Model):
 	md5_hash = ndb.StringProperty()
 	blobkey = ndb.StringProperty()
 	daily_speed_sum = ndb.BlobKeyProperty()
+	chunks = ndb.BlobKeyProperty(repeated=True)
+	chunk_job = ndb.StringProperty()

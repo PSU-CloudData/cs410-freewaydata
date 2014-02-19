@@ -28,7 +28,7 @@ mapreduce:
     - name: shard_count
       default: 16
 
-- name: Split lines using regular expression
+- name: Split file
   params:
   - name: done_callback
     value: /done
@@ -37,4 +37,3 @@ mapreduce:
     input_reader: mapreduce.input_readers.BlobstoreZipInputReader
     params:
     - name: blob_key
-    - name: split_re

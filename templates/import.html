@@ -35,6 +35,7 @@
 						<th>content type</th>
 						<th>md5</th>
 						<th>blobkey</th>
+						<th>size</th>
 					</tr>
 					{% for item in items %}
 					<tr>
@@ -45,6 +46,7 @@
 						<td>{{ item.content_type }}</td>
 						<td>{{ item.md5_hash }}</td>
 						<td>{{ item.blobkey }}</td>
+						<td>{{ item.size }}</td>
 					</tr>
 					{% endfor %}
 				</table>

@@ -182,10 +182,14 @@ class DoneHandler(webapp2.RequestHandler):
     logging.info("Import done %s" % self.request.arguments())
     logging.info("Done")
 
+
 def split_file(entity):
-	""" Method defined for "Split lines using regular expression" MR job specified in mapreduce.yaml
+	""" Method defined for "Split file" MR job specified in mapreduce.yaml
 
 	Note: this function will be problematic with large datasets due to counter map size limitation of 1MB
+	
+	Note: This function may be called multiple times for larger files, as
+	google.appengine.ext.blobstore.MAX_BLOB_FETCH_SIZE is a little less than 32MB
 
 	Args:
 	entity: entity to process as string. Should be a zip archive with
@@ -194,9 +198,8 @@ def split_file(entity):
 	ctx = context.get()
 	params = ctx.mapreduce_spec.mapper.params
 	blob_key = params['blob_key']
-	split_re = params['split_re']
+	logging.info("Got key:%s", blob_key)
 
-	logging.info("Got key:%s expression:%s", blob_key, split_re)
 	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
 	logging.info("Got filename:%s", blob_reader.blob_info.filename)
 	fw_ld = re.search('freeway_loopdata.*', blob_reader.blob_info.filename)
@@ -211,19 +214,90 @@ def split_file(entity):
 		else:
 			logging.info("Unrecognized content type:%s", blob_reader.blob_info.content_type)
 
+		# chunk_size (line numbers per chunk) may affect file size
+		# file size currently limited to google.appengine.ext.blobstore.MAX_BLOB_FETCH_SIZE ~32MB
+		chunk_size = 750000
+		chunk_num = 0
+		i = 0
+		blob_keys = []
+
+		# get the corresponding FileMetadata object for the provided blob_key
+		f = ndb.Key(FileMetadata, blob_key).get()
+
+		# verify that there aren't any existing chunks from other jobs
+		# if there are existing chunks, remove them; set the current job_id
+		job_id = ctx.mapreduce_spec.mapreduce_id
+		if f.chunk_job != job_id:
+			logging.info("Re-chunking file %s...")
+			f.chunk_job = job_id
+			for chunk in f.chunks:
+				blobstore.delete(chunk)
+				logging.info("Deleted blob %s", str(chunk))
+			delattr(f, 'chunks')
+			f.put()
+
 		if file:
-			csv_reader = csv.DictReader(file)
-			csv_headers = csv_reader.fieldnames
-			if 'speed' in csv_headers:
-				for line in csv_reader:
-					date = re.search('.*(%s).*' % split_re, line['starttime'])
-					if date:
-						logging.info("%s", line)
+			headers = file.next()
+			outputString = headers
+			for line in file:
+				outputString += line
+				i += 1
+				if i > chunk_size:
+					# Chunk size rolled over - save file contents to Blobstore, and stash key
+					i = 0
+				
+					# Create the file
+					file_name = files.blobstore.create(mime_type='application/octet-stream',
+													_blobinfo_uploaded_filename=blob_key+"-"+str(chunk_num))
+
+					# Open the file and write to it
+					with files.open(file_name, 'a') as f:
+						f.write(outputString)
+
+					# Finalize the file. Do this before attempting to read it.
+					files.finalize(file_name)
+
+					# Get the file's blob key
+					chunk_blob_key = files.blobstore.get_blob_key(file_name)
+	
+					blob_keys.append(chunk_blob_key)
+					logging.info("Created blob %s", chunk_blob_key)
+									
+					outputString = headers
+					chunk_num += 1
+			
+			if outputString != headers:
+				# Create the file
+				file_name = files.blobstore.create(mime_type='application/octet-stream',
+												_blobinfo_uploaded_filename=blob_key+"-"+str(chunk_num))
+
+				# Open the file and write to it
+				with files.open(file_name, 'a') as f:
+					f.write(outputString)
+
+				# Finalize the file. Do this before attempting to read it.
+				files.finalize(file_name)
+
+				# Get the file's blob key
+				chunk_blob_key = files.blobstore.get_blob_key(file_name)
+
+				blob_keys.append(chunk_blob_key)
+				logging.info("Created blob %s", chunk_blob_key)
+				
+			logging.info("Got blobkeys:%s" % blob_keys)
+			
+			# update the FileMetadata object's "chunks" property to include blob_keys
+			f = ndb.Key(FileMetadata, blob_key).get()
+			if f:
+				for key in blob_keys:
+					f.chunks.append(key)
+				f.put()
 			else:
-				logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
+				logging.error("Could not retrive FileMetadata for key %s", blob_key)
 
 
-""" Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file)
+
+""" Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file
   
   Args:
     entity: entity to process as string. Should be a zip archive with
@@ -258,15 +332,20 @@ class ImportDoneHandler(webapp2.RequestHandler):
   		del counters['mapper-calls']
       if 'mapper-walltime-ms' in counters.keys():
   		del counters['mapper-walltime-ms']
+		
       outputString = ''
+	  
+	  # Get the blob_key for the input FileMetadata object
       file_meta_key = ndb.Key(FileMetadata, input_blob_key)
+	  
+	  # Get the FileMetadata object from the Datastore
       file_meta = file_meta_key.get()
 
       for counter in counters.keys():
         outputString += "%s: %s\n" % (counter, counters[counter])
 
       # Create the file
-      file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+counter)
+      file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+"_"+counter)
 
       # Open the file and write to it
       with files.open(file_name, 'a') as f:
@@ -279,9 +358,15 @@ class ImportDoneHandler(webapp2.RequestHandler):
       logging.info(blobstore.BlobKey(file_name))
       blob_key = files.blobstore.get_blob_key(file_name)
 
+      # Set the FileMetadata object's 'daily_speed_sum' property to blob_key
       setattr(file_meta, 'daily_speed_sum', blob_key)
 	
+      # Put the FileMetadata object back in the Datastore
       file_meta.put()
+	elif job_name == 'Split file':
+		# run 'Perform daily speed sum' job on results
+		# reference mapreduce.api.map_job
+		
 
 
 def import_loopdata(entity):
