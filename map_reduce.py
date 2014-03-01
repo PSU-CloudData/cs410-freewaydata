@@ -115,7 +115,7 @@ def daily_speed_sum_map(data):
 
 def daily_speed_sum_reduce(key, values):
 	"""Daily Speed Sum reduce function."""
-	yield "%s: %s, %s" % (key, sum([int(value) for value in values]), len(values))
+	yield "%s: %s, %s\n" % (key, sum([int(value) for value in values]), len(values))
 
 class DailySpeedSumPipeline(base_handler.PipelineBase):
   """A pipeline to run daily_speed_sum.
@@ -135,7 +135,7 @@ class DailySpeedSumPipeline(base_handler.PipelineBase):
         "daily_speed_sum",
         "map_reduce.daily_speed_sum_map",
         "map_reduce.daily_speed_sum_reduce",
-        "mapreduce.input_readers.BlobstoreZipLineInputReader",
+        "mapreduce.input_readers.BlobstoreLineInputReader",
         "mapreduce.output_writers.BlobstoreOutputWriter",
 		mapper_params={
 			"blob_keys": blobkey,
@@ -185,15 +185,13 @@ class DoneHandler(webapp2.RequestHandler):
 
 def split_file(entity):
 	""" Method defined for "Split file" MR job specified in mapreduce.yaml
-
-	Note: this function will be problematic with large datasets due to counter map size limitation of 1MB
 	
 	Note: This function may be called multiple times for larger files, as
 	google.appengine.ext.blobstore.MAX_BLOB_FETCH_SIZE is a little less than 32MB
 
 	Args:
 	entity: entity to process as string. Should be a zip archive with
-	  text files inside.
+	  text files inside, or a single text file.
 	"""
 	ctx = context.get()
 	params = ctx.mapreduce_spec.mapper.params
@@ -222,20 +220,24 @@ def split_file(entity):
 		blob_keys = []
 
 		# get the corresponding FileMetadata object for the provided blob_key
-		f = ndb.Key(FileMetadata, blob_key).get()
+		f = ndb.Key(FileMetadata, blob_key).get(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
 
-		# verify that there aren't any existing chunks from other jobs
-		# if there are existing chunks, remove them; set the current job_id
-		job_id = ctx.mapreduce_spec.mapreduce_id
-		if f.chunk_job != job_id:
-			logging.info("Re-chunking file %s...")
-			f.chunk_job = job_id
-			for chunk in f.chunks:
-				blobstore.delete(chunk)
-				logging.info("Deleted blob %s", str(chunk))
-			delattr(f, 'chunks')
-			f.put()
+		if f:
+			# verify that there aren't any existing chunks from other jobs
+			# if there are existing chunks, remove them; set the current job_id
+			job_id = ctx.mapreduce_spec.mapreduce_id
 
+			if f.chunk_job != job_id:
+				logging.info("Re-chunking file %s...", f.filename)
+				f.chunk_job = job_id
+				for chunk in f.chunks:
+					blobstore.delete(chunk)
+					logging.info("Deleted blob %s", str(chunk))
+				delattr(f, 'chunks')
+				f.put(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
+		else:
+			logging.error("Could not retrieve FileMetadata for key %s", blob_key)
+			
 		if file:
 			headers = file.next()
 			outputString = headers
@@ -287,15 +289,20 @@ def split_file(entity):
 			logging.info("Got blobkeys:%s" % blob_keys)
 			
 			# update the FileMetadata object's "chunks" property to include blob_keys
-			f = ndb.Key(FileMetadata, blob_key).get()
+			f = ndb.Key(FileMetadata, blob_key).get(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
 			if f:
 				for key in blob_keys:
 					f.chunks.append(key)
-				f.put()
+				f.put(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
 			else:
 				logging.error("Could not retrive FileMetadata for key %s", blob_key)
 
 
+
+from mapreduce.api import map_job
+from mapreduce.api.map_job import JobConfig
+from mapreduce.api.map_job import mapper as mapper_module
+from mapreduce import input_readers
 
 """ Pre-defined MapReduce job  "import_loopdata" that will process a freeway_loopdata.csv file
   
@@ -304,70 +311,122 @@ def split_file(entity):
       text files inside.
 """
 class ImportDoneHandler(webapp2.RequestHandler):
-  """Handler for completion of split_file operation."""
-  def post(self):
-    logging.info("Import done %s" % self.request.arguments())
-    logging.info(self.request.headers)
-	
-    # use MR state to get original blob_key
-    job_id = self.request.headers['Mapreduce-Id']
-    state = model.MapreduceState.get_by_job_id(job_id)
-	
-    logging.info(state.mapreduce_spec)
-	
-	# use MR state to get original blob_key
-    params = state.mapreduce_spec.mapper.params
-    input_blob_key = params['blob_key']
-    logging.info("Input blob_key:%s", input_blob_key)
-	
-	# use MR state to get job name
-    job_name = state.mapreduce_spec.name
-    logging.info("Got job name:%s", job_name)
-	
-    logging.info("Import for job %s done" % job_id)
-    if job_name == 'Perform daily speed sum':
-      counters = state.counters_map.counters
-      # Remove counters not needed for stats
-      if 'mapper-calls' in counters.keys():
-  		del counters['mapper-calls']
-      if 'mapper-walltime-ms' in counters.keys():
-  		del counters['mapper-walltime-ms']
+	"""Handler for completion of split_file operation."""
+	def post(self):
+		logging.info("Import done %s" % self.request.arguments())
+		logging.info(self.request.headers)
+		# use MR state to get original blob_key
+		job_id = self.request.headers['Mapreduce-Id']
+		state = model.MapreduceState.get_by_job_id(job_id)
 		
-      outputString = ''
-	  
-	  # Get the blob_key for the input FileMetadata object
-      file_meta_key = ndb.Key(FileMetadata, input_blob_key)
-	  
-	  # Get the FileMetadata object from the Datastore
-      file_meta = file_meta_key.get()
-
-      for counter in counters.keys():
-        outputString += "%s: %s\n" % (counter, counters[counter])
-
-      # Create the file
-      file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+"_"+counter)
-
-      # Open the file and write to it
-      with files.open(file_name, 'a') as f:
-        f.write(outputString)
-
-      # Finalize the file. Do this before attempting to read it.
-      files.finalize(file_name)
-
-      # Get the file's blob key
-      logging.info(blobstore.BlobKey(file_name))
-      blob_key = files.blobstore.get_blob_key(file_name)
-
-      # Set the FileMetadata object's 'daily_speed_sum' property to blob_key
-      setattr(file_meta, 'daily_speed_sum', blob_key)
-	
-      # Put the FileMetadata object back in the Datastore
-      file_meta.put()
-	elif job_name == 'Split file':
-		# run 'Perform daily speed sum' job on results
-		# reference mapreduce.api.map_job
+		logging.info(state.mapreduce_spec)
 		
+		# use MR state to get original blob_key
+		params = state.mapreduce_spec.mapper.params
+		logging.info("Params: %s", params)
+		
+		if 'blob_key' in params:
+			input_blob_key = params['blob_key']
+			logging.info("Input blob_key:%s", input_blob_key)
+		elif 'input_reader' in params:
+			if 'blob_key' in params['input_reader']:
+				input_blob_key = params['input_reader']['blob_key']
+		else:
+			input_blob_key = None
+			
+		if 'blob_keys' in params:
+			blob_keys = params['blob_keys']
+			logging.info("Blob_keys:%s", blob_keys)
+		elif 'input_reader' in params:
+			if 'blob_keys' in params['input_reader']:
+				blob_keys = params['input_reader']['blob_keys']
+		else:
+			blob_keys = None
+		
+		# use MR state to get job name
+		job_name = state.mapreduce_spec.name
+		logging.info("Completed job with name:%s id:%s", job_name, job_id)
 
+		if job_name == 'Split file':
+			# run 'Perform daily speed sum' job on results
+			# reference mapreduce.api.map_job
+			# may be something like:
+		
+			if input_blob_key:
+				# Get the blob_key for the input FileMetadata object
+				file_meta_key = ndb.Key(FileMetadata, input_blob_key)
+		  
+				# Get the FileMetadata object from the Datastore
+				# make sure to specify read_policy to avoid getting stale results
+				file_meta = file_meta_key.get(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
+
+				if file_meta:
+					# get a list of 'chunks' that were output from the 'Split file' job
+					logging.info("Got chunks: %s", file_meta.chunks)
+					blob_keys = [str(chunk) for chunk in file_meta.chunks]
+					logging.info("Got blobkeys: %s", blob_keys)
+										
+					# create the MR job config - note that we are also providing the input_blob_key to the Map function
+#					config = JobConfig(job_name = 'Perform daily speed sum',
+#										mapper = mapper_module.Mapper,
+#										input_reader_cls = input_readers.BlobstoreLineInputReader,
+#										input_reader_params = {'blob_keys': blob_keys,
+#																'blob_key': input_blob_key},
+#										shard_count = 16,
+#										done_callback_url = '/done')
+
+					logging.info("Starting daily speed sum...")
+					pipeline = DailySpeedSumPipeline(file_meta.blobkey, blob_keys)
+					pipeline.start()
+					self.redirect(pipeline.base_path + "/status?root=" + pipeline.pipeline_id)
+				else:
+					logging.error("Could not get FileMetadata for key %s", input_blob_key)
+			else:
+				logging.error("Could not find blob_key in params")
+
+		elif job_name == 'Perform daily speed sum':
+			counters = state.counters_map.counters
+			# Remove counters not needed for stats
+			if 'mapper-calls' in counters.keys():
+				del counters['mapper-calls']
+			if 'mapper-walltime-ms' in counters.keys():
+				del counters['mapper-walltime-ms']
+			outputString = ''
+		
+			# Perform speed sum on one blobstore object
+			if input_blob_key:
+				# Get the blob_key for the input FileMetadata object
+				file_meta_key = ndb.Key(FileMetadata, input_blob_key)
+		  
+				# Get the FileMetadata object from the Datastore
+				file_meta = file_meta_key.get(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
+
+				for counter in counters.keys():
+					outputString += "%s: %s\n" % (counter, counters[counter])
+	
+				# Create the file
+				file_name = files.blobstore.create(mime_type='application/octet-stream',_blobinfo_uploaded_filename=input_blob_key+"_daily_speed")
+		
+				# Open the file and write to it
+				with files.open(file_name, 'a') as f:
+					f.write(outputString)
+	
+				# Finalize the file. Do this before attempting to read it.
+				files.finalize(file_name)
+	
+				# Get the file's blob key
+				logging.info(blobstore.BlobKey(file_name))
+				blob_key = files.blobstore.get_blob_key(file_name)
+		
+				# Set the FileMetadata object's 'daily_speed_sum' property to blob_key
+				setattr(file_meta, 'daily_speed_sum', blob_key)
+		
+				# Put the FileMetadata object back in the Datastore
+				file_meta.put(options=ndb.ContextOptions(use_memcache=False, use_datastore=True, use_cache=True))
+			else:
+				logging.error("Could not find blob_key in params")
+		else:
+			logging.error("Unrecognized job name: %s", job_name)
 
 def import_loopdata(entity):
 	""" Method defined for "Import freeway loopdata" MR job specified in mapreduce.yaml
@@ -424,7 +483,10 @@ def daily_speed_sum(entity):
 		"""
 	ctx = context.get()
 	params = ctx.mapreduce_spec.mapper.params
-	blob_key = params['blob_key']
+	if 'blob_key' in params:
+		blob_key = params['blob_key']
+	elif 'mapper_params' in params:
+		blob_key = params['mapper_params']['blob_key']
 	
 	logging.info("Got key:%s", blob_key)
 	blob_reader = blobstore.BlobReader(blob_key, buffer_size=1048576)
@@ -456,6 +518,7 @@ def daily_speed_sum(entity):
 					logging.error("No field named 'speed' found in CSV headers:%s", csv_headers)
 	else:
 		logging.error("No blob was found for key %s", blob_key)
+
 
 app = webapp2.WSGIApplication(
     [

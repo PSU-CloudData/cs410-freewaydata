@@ -1,5 +1,15 @@
 mapreduce:
 
+- name: Split file
+  params:
+  - name: done_callback
+    value: /done
+  mapper:
+    handler: map_reduce.split_file
+    input_reader: mapreduce.input_readers.BlobstoreZipInputReader
+    params:
+    - name: blob_key
+
 - name: Perform daily speed sum
   params:
   - name: done_callback
@@ -27,13 +37,3 @@ mapreduce:
       default: 100
     - name: shard_count
       default: 16
-
-- name: Split file
-  params:
-  - name: done_callback
-    value: /done
-  mapper:
-    handler: map_reduce.split_file
-    input_reader: mapreduce.input_readers.BlobstoreZipInputReader
-    params:
-    - name: blob_key
